@@ -38,7 +38,7 @@ def test_t1_borrow_assets_reconcile():
         reconstructed = sum(
             mm.toAssetsUp(int(r.borrow_shares), accrued_borrow_assets, accrued_borrow_shares)
             for r in pos.itertuples()
-            if r.borrow_shares > 0
+            if int(r.borrow_shares) > 0
         )
         rel_err = abs(reconstructed - accrued_borrow_assets) / max(accrued_borrow_assets, 1)
         assert rel_err < 1e-6, f"{market_id}: reconstructed={reconstructed} accrued={accrued_borrow_assets}"

@@ -47,7 +47,13 @@ def fetch_market_state(market_id, block):
 
 
 def fetch_positions(market_id, addresses, block):
-    """Raw on-chain Position structs for every address, via one multicall batch."""
+    """Raw on-chain Position structs for every address, via one multicall batch.
+
+    supply_shares/borrow_shares/collateral are uint256/uint128 and can exceed int64 (seen in
+    practice -- an ordinary ~1,133-token position in an 18-decimal collateral asset is already
+    ~1.13e21 raw units, past int64's ~9.2e18 ceiling), so they're stored as decimal strings to
+    stay integer-exact; parse back with int() before use.
+    """
     id_bytes = bytes.fromhex(market_id[2:])
     calls = [("position", [id_bytes, chain.Web3.to_checksum_address(a)]) for a in addresses]
     results = chain.multicall_morpho(calls, block)
@@ -57,7 +63,12 @@ def fetch_positions(market_id, addresses, block):
             continue
         supply_shares, borrow_shares, collateral = r
         rows.append(
-            {"user": addr, "supply_shares": supply_shares, "borrow_shares": borrow_shares, "collateral": collateral}
+            {
+                "user": addr,
+                "supply_shares": str(supply_shares),
+                "borrow_shares": str(borrow_shares),
+                "collateral": str(collateral),
+            }
         )
     return pd.DataFrame(rows)
 

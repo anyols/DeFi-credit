@@ -1,12 +1,28 @@
 import os
+from pathlib import Path
+
+
+def _load_dotenv(path=".env"):
+    path = Path(__file__).parent / path
+    if not path.exists():
+        return
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        os.environ.setdefault(key.strip(), value.strip())
+
+
+_load_dotenv()
 
 CHAIN_ID = 1  # Ethereum mainnet
 
 RPC_URL = os.environ.get("RPC_URL", "")
 
-# Pinned once an archive RPC is connected, then frozen for the rest of the project so every
-# on-chain read is reproducible. ~26,465,532 was mainnet head when this file was written.
-SNAPSHOT_BLOCK = None
+# Pinned once an archive RPC was connected (2026-11-21), then frozen for the rest of the
+# project so every on-chain read is reproducible. 10 blocks behind mainnet head at pin time.
+SNAPSHOT_BLOCK = 26465719
 
 # Verified against docs.morpho.org/get-started/resources/addresses and cross-checked live via
 # the Morpho API (market.morphoBlue.address) for every market the chosen vault below allocates to.
