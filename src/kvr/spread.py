@@ -1,17 +1,16 @@
-"""M10: spread decomposition, per market. Scope note (per SPEC.md section 7's own cut list,
-applied given time constraints): the cross-section regression across the wider USDC-market
-universe is cut, keeping only the per-market waterfall it explicitly allows dropping first.
-"""
+"""M10: spread decomposition, per market and across the wider USDC-market cross-section."""
 
 import time
 
+import numpy as np
 import requests
 
-from . import api, chain
+from . import api, chain, el, oracle
 
 AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
 RAY = 10**27
 AAVE_USDC_DEFILLAMA_POOL = "aa70268e-4b52-42bf-a116-608b370f9501"  # verified: apyBase matches the live on-chain rate
+USDC_ETHEREUM = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
 
 
 def aave_usdc_supply_rate(usdc_address, block):
@@ -63,11 +62,132 @@ def utilization_time_at_cap(market_id, chain_id=1, threshold=0.99, lookback_days
 
 def spread_waterfall(supply_apy, risk_free_rate, el_bps_range, liquidity_frac_at_cap, liquidity_bps_per_unit_cap=50):
     """spread = EL + liquidity + residual. The liquidity_bps_per_unit_cap=50 scaling is an
-    assumption (SPEC.md gives no formula, just says to price the liquidity proxy "via the
-    cross-section" -- which is cut here, see module docstring), labeled as one.
+    assumption (SPEC.md gives no formula for pricing the liquidity proxy) -- cross_section_ols
+    below is what "via the cross-section" means; this constant is a placeholder until that
+    regression's own liquidity coefficient is substituted in by the caller.
     """
     spread_bps = (supply_apy - risk_free_rate) * 10_000
     el_mid = sum(el_bps_range) / 2 if el_bps_range else 0.0
     liquidity_bps = liquidity_frac_at_cap * liquidity_bps_per_unit_cap if liquidity_frac_at_cap is not None else 0.0
     residual_bps = spread_bps - el_mid - liquidity_bps
     return {"spread_bps": spread_bps, "el_bps": el_mid, "liquidity_bps": liquidity_bps, "residual_bps": residual_bps}
+
+
+# --- Cross-section (SPEC.md M10): all Ethereum USDC markets with supply > $1M -------------
+
+def usdc_market_universe(min_supply_usd=1_000_000, chain_id=1, first=300):
+    q = """
+    query($loan: [String!], $chainIds: [Int!], $minSupply: Float, $first: Int) {
+      markets(first: $first, where: { loanAssetAddress_in: $loan, chainId_in: $chainIds, supplyAssetsUsd_gte: $minSupply }) {
+        items {
+          marketId lltv
+          loanAsset { symbol decimals address }
+          collateralAsset { symbol address decimals }
+          oracle { address }
+          irmAddress
+          state { supplyAssetsUsd borrowAssetsUsd utilization quarterlySupplyApy collateralAssetsUsd fee }
+        }
+      }
+    }
+    """
+    data = api.graphql(q, {"loan": [USDC_ETHEREUM], "chainIds": [chain_id], "minSupply": min_supply_usd, "first": first})
+    return data["markets"]["items"]
+
+
+_COLLATERAL_WITH_TAIL_HISTORY = ("BTC", "ETH", "STETH", "RETH")  # see classify_collateral
+
+
+def classify_collateral(symbol):
+    """A simple, labeled heuristic for the regression's dummy variable -- not a rigorous
+    taxonomy. BTC/ETH-like collateral gets a lambda(x) in el_proxy_bps (BTC's, as a proxy, even
+    for ETH -- both liquid majors; genuinely imprecise but better than nothing for a descriptive
+    regression). Everything else (PT fixed-maturity notes, RWA wrappers, obscure yield-bearing
+    stables) gets EL marked not estimable, per SPEC.md's own rule against inventing a number --
+    these are mostly illiquid, little-traded tokens with no usable price history at all.
+    """
+    if symbol is None:
+        return "idle"
+    s = symbol.upper()
+    if s.startswith("PT-"):
+        return "PT (fixed maturity)"
+    if "BTC" in s:
+        return "BTC"
+    if any(k in s for k in ("ETH", "STETH", "RETH")):
+        return "ETH/LST"
+    if any(k in s for k in ("USD", "USR", "USN", "EUR")):
+        return "stable/yield-bearing"
+    return "RWA/other"
+
+
+def has_tail_history_proxy(collateral_class):
+    return collateral_class in ("BTC", "ETH/LST")
+
+
+def batch_classify_oracles(oracle_addresses, block, batch_size=300):
+    """Classifies many oracles in one pass via multicall instead of one eth_call per field per
+    oracle (6 fields x 66 markets would otherwise be 396 separate round trips)."""
+    fields = oracle._FEED_FIELDS + oracle._VAULT_FIELDS
+    addresses = list(oracle_addresses)
+    calls = [(addr, fn, []) for addr in addresses for fn in fields]
+    results = chain.multicall(calls, block, batch_size=batch_size)
+
+    out = {}
+    idx = 0
+    for addr in addresses:
+        values = {}
+        for fn in fields:
+            r = results[idx]
+            values[fn] = r[0] if r else None
+            idx += 1
+        if all(v is None for v in values.values()):
+            out[addr] = "UNKNOWN"
+        elif any(oracle._is_set(values[k]) for k in oracle._FEED_FIELDS):
+            out[addr] = "MARKET"
+        elif any(oracle._is_set(values[k]) for k in oracle._VAULT_FIELDS):
+            out[addr] = "EXCHANGE_RATE"
+        else:
+            out[addr] = "FIXED"
+    return out
+
+
+def el_proxy_bps(supply_usd, borrow_usd, collateral_usd, lambda_fn, shocks):
+    """Aggregate-level EL proxy: treats the whole market's collateral/debt as one position (no
+    per-borrower distribution, no LIF/slippage -- just max(0, borrow_usd - shocked collateral
+    value) / supply_usd, matching stress.py's economic_loss definition but computed in aggregate
+    instead of per-position). A real simplification, for cross-sectional comparison only --
+    the vault's own 3 markets get the full per-position M8 treatment elsewhere.
+    """
+    if lambda_fn is None or not collateral_usd or not borrow_usd or not supply_usd:
+        return None
+    shocks_sorted = sorted(shocks)
+    freqs = el.marginal_frequencies(shocks_sorted, lambda_fn)
+    el_frac = 0.0
+    for s in shocks_sorted:
+        shocked_collateral = collateral_usd * (1 + s)
+        loss = max(0.0, borrow_usd - shocked_collateral)
+        el_frac += freqs[s] * (loss / supply_usd)
+    return el_frac * 10_000
+
+
+def aave_morpho_funded_carry(ltv, r_morpho_supply, r_aave_borrow, collateral_yield=0.0):
+    """SPEC.md M10's 'Why Aave->Morpho isn't arbitrage' box: the carry from a trader who already
+    holds the collateral, borrows USDC against it on Aave, and deposits that USDC into the
+    Morpho market -- a funded trade exposed to Aave's own liquidation risk on the collateral and
+    Morpho's credit risk on the supply side (the same risk this whole project prices).
+    """
+    return collateral_yield + ltv * (r_morpho_supply - r_aave_borrow)
+
+
+def ols_regress(y, feature_matrix, feature_names):
+    """Plain OLS via lstsq (adds its own intercept column) -- no new dependency for a
+    descriptive regression. Returns coefficients (incl. intercept), R^2, and n.
+    """
+    y = np.asarray(y, dtype=float)
+    X = np.column_stack([np.ones(len(y)), np.asarray(feature_matrix, dtype=float)])
+    coeffs, _residuals, _rank, _sv = np.linalg.lstsq(X, y, rcond=None)
+    fitted = X @ coeffs
+    ss_res = np.sum((y - fitted) ** 2)
+    ss_tot = np.sum((y - y.mean()) ** 2)
+    r_squared = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
+    names = ["intercept"] + list(feature_names)
+    return {"coefficients": dict(zip(names, coeffs.tolist())), "r_squared": float(r_squared), "n": len(y)}

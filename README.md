@@ -73,7 +73,36 @@ would be circular, not merely noisy.
 isn't the curve's shape, it's the current-vs-optimal bars: the vault's actual deployment (~$17k,
 all in the worst-scoring market) looks nothing like what a $1M risk-priced allocation would do
 (mostly USDC/cbBTC and USDC/WBTC). This vault is too early-stage for "reallocate for more yield"
-to be the right framing -- it simply hasn't deployed the capital it has caps for yet.
+to be the right framing -- it simply hasn't deployed the capital it has caps for yet. Cross-
+checking the optimizer with SLSQP from several starting points surfaced something more
+interesting than agreement: on USDC/sNUSD specifically, SLSQP lands on a $309 allocation
+claiming 107,735% implied APY (a "income" of $333k from $309), because that market's rateAtTarget
+is pinned at the IRM's own ceiling from 90 days at ~100% utilization, and the optimizer's own
+"hold borrow demand fixed" assumption breaks down completely there -- no real borrower keeps
+paying as the implied rate explodes. Excluding that one degenerate market, SLSQP and greedy agree
+on the objective to within 0.02% (`tests/test_optimize.py`), so the solver itself is sound; the
+sNUSD spike is a fact about that specific market, not a bug in either algorithm.
+
+**Cross-section (fig 4):** 66 Ethereum USDC markets with supply > $1M (n=42 after excluding
+markets with no usable supply-APY reading or an implausibly pinned one). `spread ~ illiquidity +
+oracle_class + collateral_class` gives R^2=0.40 -- illiquidity's coefficient is large and
+correctly signed (more time pinned at the utilization cap correlates with more spread), but
+oracle_class's coefficient is confounded with collateral_class (most BTC/ETH markets happen to
+use real price feeds; most stable/yield-bearing markets don't), so it shouldn't be read as "real
+feeds pay more because feeds are good." Restricting to the 12 markets where an EL proxy is even
+computable (BTC/ETH-LST collateral; everything else lacks usable tail history) makes the point
+visually in fig 4's right panel: EL proxy is 0.0 for every single one of them, because the same
+1-day shock-horizon limitation found on the vault's own USDC/WBTC market applies market-wide, not
+just to one position. With n=42-66 this is descriptive, not causal, exactly as SPEC.md expects.
+
+**Why Aave->Morpho isn't arbitrage:** naively, USDC/WBTC's 90d supply APY (3.79%) sits above
+Aave's current USDC variable borrow rate (3.65%), a 13bps gap that looks like free money. The
+funded version of that trade -- a trader who already holds WBTC borrows USDC against it on Aave
+at 86% LTV (this market's LLTV) and deposits that USDC into Morpho -- nets
+`0.86 * (0.0379 - 0.0365) = 11.4bps` (`spread.aave_morpho_funded_carry`), not 13bps, and that
+thin remainder is compensation for Aave's own liquidation risk on the collateral plus Morpho's
+credit risk on the supply side -- the same credit risk this whole project exists to price, not
+an exploitable gap.
 
 ## Backtest: Stream / xUSD (Nov 2025)
 
@@ -113,8 +142,13 @@ leverage to one counterparty), not the event.
 - The Stream/xUSD concentration numbers are read from the Morpho API's *current* indexed state,
   not a true block-395,834,395 position snapshot (oracle class and realized bad debt are genuine
   point-in-time/historical reads; concentration is a reasonable proxy, not verified pinned).
-- Cut entirely, per SPEC.md's own fallback order: the cross-section regression across the wider
-  USDC-market universe, and the SLSQP cross-check on the optimizer.
+- The cross-section's EL proxy is aggregate (market-level collateral/debt, no per-position
+  distribution, no LIF/slippage) and uses BTC's own exceedance frequency as a stand-in for
+  ETH/LST collateral too -- a real approximation, and it inherits the same 1-day-horizon
+  understatement as the vault's own EL numbers (visibly: 0.0 for all 12 markets it's computed
+  for, fig 4). The regression's oracle_class coefficient is confounded with collateral_class
+  (most BTC/ETH markets use real feeds, most stable/yield markets don't) and shouldn't be read
+  as a clean causal effect.
 
 ## What I'd build next with desk data
 
@@ -127,14 +161,18 @@ leverage to one counterparty), not the event.
 - A sequential, MEV-aware liquidation-ordering model instead of one shared per-step slippage
   figure, to see whether the first liquidator in each batch actually clears profitably even when
   the aggregate doesn't.
-- The cross-section regression and SLSQP check this version cut.
+- A multi-horizon lambda(x) for the cross-section's EL proxy too, and per-collateral-asset price
+  history instead of reusing BTC's for the whole ETH/LST bucket.
+- A true historical position snapshot for the Stream/xUSD concentration numbers (needs Arbitrum
+  archive access at block 395,834,395, not just a public RPC's current-tip reads).
 
 ## Reproduce
 
 ```
-python run_all.py        # M1/M2: pulls the vault's markets and positions from chain + API
-python build_report.py   # M5-M12: oracle/dex/scenarios/stress/el/spread/optimize/stream_case + figures
-pytest                   # T1, T2, T3, T4, T7 pass against live data; T6 is a confirmed xfail (see below)
+python run_all.py           # M1/M2: pulls the vault's markets and positions from chain + API
+python build_report.py      # M5-M12: oracle/dex/scenarios/stress/el/spread/optimize/stream_case + figures
+python build_cross_section.py  # M10 cross-section: all Ethereum USDC markets with supply > $1M
+pytest                      # T1, T2, T3, T4, T7 pass against live data; T6 is a confirmed xfail (see below)
 ```
 
 **T6 fails on purpose.** It fits `dex.py`'s slippage power law on a subset of real WBTC/USDC
@@ -150,11 +188,12 @@ block, except `build_report.py`'s DEX/DefiLlama/Aave/Arbitrum reads, which are l
 
 ```
 keyrock-vault-risk/
-  config.py, run_all.py, build_report.py
+  config.py, run_all.py, build_report.py, build_cross_section.py
   src/kvr/  chain.py api.py universe.py positions.py morpho_math.py irm.py
             oracle.py dex.py scenarios.py stress.py el.py spread.py optimize.py
             stream_case.py plots.py
-  tests/    test_chain.py test_universe.py test_toy.py
+  tests/    test_chain.py test_universe.py test_toy.py test_optimize.py
+            test_spread_cross_section.py
             test_t1_positions.py test_t2_health_factor.py test_t3_irm.py
             test_t4_liquidations.py test_t6_slippage_holdout.py
   data/processed/, reports/figures/

@@ -113,6 +113,40 @@ def plot_capacity_curve(curve_points, current_allocation_usd, optimal_allocation
     return _save(fig, name)
 
 
+def plot_cross_section(rows, name="fig4_cross_section_scatter.png"):
+    """rows: list of {"spread_bps", "illiq", "oracle_class", "el_bps"(maybe None)} across the
+    USDC-market universe (SPEC.md M10). Two panels: spread vs illiquidity (full sample, colored
+    by oracle class) and spread vs EL (the much smaller subsample where EL is estimable)."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    classes = sorted({r["oracle_class"] for r in rows})
+    cmap = {c: plt.cm.tab10(i) for i, c in enumerate(classes)}
+
+    for c in classes:
+        xs = [r["illiq"] * 100 for r in rows if r["oracle_class"] == c]
+        ys = [r["spread_bps"] for r in rows if r["oracle_class"] == c]
+        ax1.scatter(xs, ys, label=c, color=cmap[c], alpha=0.75)
+    ax1.set_xlabel("% of last 90d at >=99% utilization")
+    ax1.set_ylabel("Spread vs 90d Aave USDC (bps/yr)")
+    ax1.set_title(f"Full sample (n={len(rows)})")
+    ax1.axhline(0, color="gray", linewidth=0.8)
+    ax1.legend(fontsize=8)
+    ax1.grid(alpha=0.3)
+
+    with_el = [r for r in rows if r.get("el_bps") is not None]
+    for c in sorted({r["oracle_class"] for r in with_el}):
+        xs = [r["el_bps"] for r in with_el if r["oracle_class"] == c]
+        ys = [r["spread_bps"] for r in with_el if r["oracle_class"] == c]
+        ax2.scatter(xs, ys, label=c, color=cmap[c], alpha=0.75)
+    ax2.set_xlabel("EL proxy (bps/yr)")
+    ax2.set_ylabel("Spread vs 90d Aave USDC (bps/yr)")
+    ax2.set_title(f"BTC/ETH-LST subsample (n={len(with_el)})")
+    ax2.axhline(0, color="gray", linewidth=0.8)
+    ax2.legend(fontsize=8)
+    ax2.grid(alpha=0.3)
+    fig.suptitle("Cross-section: spread vs illiquidity and EL, colored by oracle class")
+    return _save(fig, name)
+
+
 def plot_stream_case(comparison, name="fig6_stream_case.png"):
     """comparison: {label: {"hhi":.., "top1_share":.., "oracle_class":str}} for the xUSD market
     and, for reference, the vault's own real markets."""
