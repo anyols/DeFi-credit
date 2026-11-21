@@ -93,7 +93,29 @@ def concentration_metrics(market_id):
     }
 
 
-def realized_bad_debt(market_id):
+def realized_bad_debt(market_id, chain_id=42161):
+    """Both the API's badDebt (current mark-to-market shortfall estimate) and realizedBadDebt
+    (what's actually been written off via a Liquidate event's bad-debt path) -- these can and do
+    diverge when most of a defunct market's debt is still sitting un-liquidated, not yet
+    crystallized into an on-chain loss. Report both rather than silently picking one.
+    """
     liqs = api.get_market_liquidations(market_id, limit=200)
-    total_bad_debt = sum(int(l["data"]["badDebtAssets"]) for l in liqs)
-    return {"n_liquidations": len(liqs), "total_bad_debt_assets": total_bad_debt}
+    sum_from_liquidations = sum(int(l["data"]["badDebtAssets"]) for l in liqs)
+
+    q = """
+    query($id: String!, $chainId: Int!) {
+      marketById(marketId: $id, chainId: $chainId) {
+        state { borrowAssetsUsd }
+        badDebt { underlying usd }
+        realizedBadDebt { underlying usd }
+      }
+    }
+    """
+    data = api.graphql(q, {"id": market_id, "chainId": chain_id})["marketById"]
+    return {
+        "n_liquidations": len(liqs),
+        "sum_bad_debt_from_liquidation_events": sum_from_liquidations,
+        "current_borrow_assets_usd": data["state"]["borrowAssetsUsd"],
+        "current_mark_to_market_bad_debt_usd": data["badDebt"]["usd"],
+        "realized_bad_debt_usd": data["realizedBadDebt"]["usd"],
+    }

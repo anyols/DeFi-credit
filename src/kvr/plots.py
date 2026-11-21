@@ -1,0 +1,130 @@
+"""Figures for the memo (SPEC.md section 6). Each function saves a PNG to reports/figures/
+and returns the path. No adjectives, no styling beyond what makes the numbers legible.
+"""
+
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+FIGURES_DIR = Path("reports/figures")
+
+
+def _save(fig, name):
+    FIGURES_DIR.mkdir(parents=True, exist_ok=True)
+    path = FIGURES_DIR / name
+    fig.savefig(path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return str(path)
+
+
+def plot_distance_to_liquidation_cdf(markets_distances, name="fig1_distance_to_liquidation_cdf.png"):
+    """markets_distances: {market_label: [(price_drop_to_liq_fraction, debt_usd), ...]}."""
+    fig, ax = plt.subplots(figsize=(7, 5))
+    for label, points in markets_distances.items():
+        if not points:
+            continue
+        points = sorted(points)
+        drops = np.array([p[0] for p in points])
+        debts = np.array([p[1] for p in points])
+        cum_debt = np.cumsum(debts) / debts.sum()
+        ax.plot(drops * 100, cum_debt * 100, label=label, drawstyle="steps-post")
+    ax.set_xlabel("Price drop to liquidation (%)")
+    ax.set_ylabel("Cumulative debt (%)")
+    ax.set_title("Debt-weighted CDF of price drop to liquidation")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    return _save(fig, name)
+
+
+def plot_loss_vs_shock(results_by_market, breakpoints, name="fig2_loss_vs_shock_hero.png"):
+    """results_by_market: {market_label: {"gap": [scenario_result,...], "gradual": [...]}}.
+    breakpoints: {market_label: breakpoint_shock_or_None}.
+    """
+    fig, axes = plt.subplots(1, len(results_by_market), figsize=(6 * len(results_by_market), 5), squeeze=False)
+    for ax, (label, paths) in zip(axes[0], results_by_market.items()):
+        for path_label, results in paths.items():
+            shocks = [r["market_shock"] * 100 for r in results]
+            loss_frac = [
+                (r["realized_loss"] + r["economic_loss"]) / max(r["total_borrow_assets_before"], 1) * 100
+                for r in results
+            ]
+            ax.plot(shocks, loss_frac, marker="o", label=path_label)
+        bp = breakpoints.get(label)
+        if bp is not None:
+            ax.axvline(bp * 100, color="red", linestyle="--", label=f"breakpoint {bp:+.0%}")
+        ax.set_xlabel("Market shock (%)")
+        ax.set_ylabel("Loss / total borrowed (%)")
+        ax.set_title(label)
+        ax.legend()
+        ax.grid(alpha=0.3)
+    fig.suptitle("Loss vs shock, gap vs gradual, slippage-breakpoint marked")
+    return _save(fig, name)
+
+
+def plot_spread_waterfall(waterfalls, name="fig3_spread_waterfall.png"):
+    """waterfalls: {market_label: {"spread_bps":..,"el_bps":..,"liquidity_bps":..,"residual_bps":..}}."""
+    labels = list(waterfalls.keys())
+    el = [waterfalls[l]["el_bps"] for l in labels]
+    liq = [waterfalls[l]["liquidity_bps"] for l in labels]
+    resid = [waterfalls[l]["residual_bps"] for l in labels]
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    x = np.arange(len(labels))
+    ax.bar(x, el, label="EL")
+    ax.bar(x, liq, bottom=el, label="Liquidity")
+    bottom2 = np.array(el) + np.array(liq)
+    ax.bar(x, resid, bottom=bottom2, label="Residual")
+    for i, l in enumerate(labels):
+        ax.scatter(i, waterfalls[l]["spread_bps"], color="black", zorder=5, label="Actual spread" if i == 0 else None)
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=20, ha="right")
+    ax.set_ylabel("bps/yr")
+    ax.set_title("Spread waterfall: EL + liquidity + residual vs actual spread")
+    ax.axhline(0, color="gray", linewidth=0.8)
+    ax.legend()
+    ax.grid(alpha=0.3)
+    return _save(fig, name)
+
+
+def plot_capacity_curve(curve_points, current_allocation_usd, optimal_allocation_usd, market_labels, name="fig5_capacity_and_allocation.png"):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+    budgets = [p["budget"] / 1e12 for p in curve_points]  # raw 6-decimal USDC -> $M (1e6 * 1e6)
+    yields_ = [p["blended_net_yield"] * 100 for p in curve_points]
+    ax1.plot(budgets, yields_, marker="o")
+    ax1.set_xlabel("Capital deployed ($M)")
+    ax1.set_ylabel("Blended net yield (%)")
+    ax1.set_title("Capacity curve")
+    ax1.grid(alpha=0.3)
+
+    x = np.arange(len(market_labels))
+    width = 0.35
+    # raw 6-decimal USDC -> $k: the vault's real current allocations are tens of thousands of
+    # dollars, not millions, so $k keeps "current" visible next to the $1M-budget hypothetical.
+    ax2.bar(x - width / 2, [v / 1e9 for v in current_allocation_usd], width, label="Current")
+    ax2.bar(x + width / 2, [v / 1e9 for v in optimal_allocation_usd], width, label="Risk-priced optimal ($1M budget)")
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(market_labels, rotation=20, ha="right")
+    ax2.set_ylabel("$k")
+    ax2.set_title("Current vs risk-priced allocation")
+    ax2.legend()
+    ax2.grid(alpha=0.3)
+    return _save(fig, name)
+
+
+def plot_stream_case(comparison, name="fig6_stream_case.png"):
+    """comparison: {label: {"hhi":.., "top1_share":.., "oracle_class":str}} for the xUSD market
+    and, for reference, the vault's own real markets."""
+    labels = list(comparison.keys())
+    hhi = [comparison[l]["hhi"] or 0 for l in labels]
+    fig, ax = plt.subplots(figsize=(7, 5))
+    colors = ["crimson" if "xUSD" in l else "steelblue" for l in labels]
+    ax.bar(labels, hhi, color=colors)
+    for i, l in enumerate(labels):
+        ax.annotate(comparison[l]["oracle_class"], (i, hhi[i]), ha="center", va="bottom")
+    ax.set_ylabel("Borrower HHI (0-1)")
+    ax.set_title("Stream/xUSD case: concentration + oracle class vs the vault's own markets")
+    ax.set_xticklabels(labels, rotation=20, ha="right")
+    ax.grid(alpha=0.3)
+    return _save(fig, name)
