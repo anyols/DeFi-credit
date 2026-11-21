@@ -11,11 +11,20 @@ and API data, not just transcribed from the spec (see `tests/`).
 
 ## TL;DR
 
-- The vault's one actually-funded market (USDC/sNUSD, $17.3k) pays **3.14% while Aave's USDC
-  rate is 3.90%** -- a **-77bps spread against risk-free**, on a market with an oracle that can't
-  see a depeg, zero Uniswap V3 depth, and 100% utilization on every single day of the past 90.
-  Its two approved-but-unfunded siblings (USDC/cbBTC, USDC/WBTC, combined ~$600M of unused cap)
-  also pay less than risk-free, by -13bps and -12bps.
+- The vault's one actually-funded market (USDC/sNUSD, $17.3k) pays **3.14% (90d trailing avg)
+  while Aave's USDC rate is 3.90%** -- a **-77bps spread against risk-free** on paper, on a
+  market with an oracle that can't see a depeg, zero Uniswap V3 depth, and 100% utilization on
+  every single day of the past 90. But the 90d average is stale: T5 (ground-truth on-chain
+  `totalAssets`/`totalSupply`, not the API's own disagreeing `monthlyApy` field) shows the
+  market's own per-share value has actually been compounding at an accelerating, IRM-ceiling-
+  pinned rate recently -- the vault's realized return over just the last 30 days, **if it had
+  been fully allocated there, would annualize to ~236,785%**. It wasn't: only ~29% of the
+  vault's capital sits in that market (the rest idle), so the vault's actual blended 30d return
+  is ~670% annualized, not ~236,785% -- still extreme, still unstable, still not a sign of a
+  good position, just proof the 3.14% headline number is already out of date in the dangerous
+  direction. Its two approved-but-unfunded siblings (USDC/cbBTC, USDC/WBTC, combined ~$600M of
+  unused cap) pay less than risk-free on the same 90d basis, by -13bps and -12bps, with no sign
+  of the same rate-spike dynamic (their utilization isn't pinned the way sNUSD's is).
 - **Weakest market: USDC/sNUSD.** `EXCHANGE_RATE` oracle (no price feed at all -- see
   `oracle.classify`), confirmed zero Uniswap V3 depth at any size/fee tier for sNUSD->USDC, and a
   debt-weighted distance-to-liquidation of essentially 0% (fig 1) -- the whole book is already at
@@ -67,6 +76,25 @@ also has none, for a third, more fundamental reason: not a thin-data problem but
 one -- DefiLlama's price series for it is a smooth accounting NAV, not secondary-market trading
 data (see `scenarios.fetch_daily_prices`'s docstring), so using it to estimate depeg frequency
 would be circular, not merely noisy.
+
+**T5, vault realized return vs market return:** the API's own `monthlyApy` field for this vault
+(and `monthlySupplyApy` for the sNUSD market) reports small or negative values for the last 30
+days. Recomputing from raw `sharePriceNumber` history gave a wildly different ~601-670%
+annualized, so rather than trust either derived field, T5 goes to ground truth: ERC4626
+`totalAssets()`/`totalSupply()` read directly at two blocks 30 days apart
+(`tests/test_t5_vault_apy.py`). Confirmed: vault shares outstanding barely moved (no deposits or
+withdrawals), while `totalAssets` grew from $45,610 to $53,939 -- an 18.27% real, yield-only gain
+over 30 days (~670%/yr annualized). Checking *why* this doesn't match the sNUSD market's own
+per-share growth over the same window (176.5%, ~236,785%/yr annualized) found the vault's own
+position *in that market specifically*: $5,576 thirty days ago, $15,419 now -- the same 176.5%
+growth, confirming the vault did capture the market's full rate on the dollars actually there.
+The rest of the vault (~88% of it 30 days ago, ~71% now) was sitting idle, earning nothing,
+dragging the blended realized return down by two orders of magnitude from what "fully allocated"
+would have produced. Two things are true at once: the API's own derived APY fields for this
+vault/market are unreliable (a real, separate finding -- don't trust them without a ground-truth
+check), and the vault is leaving an enormous, albeit extremely unstable and probably unrepeatable,
+amount of yield on the table by not deploying its idle capital -- the same binding constraint
+fig 5 found from a completely different angle (the capacity/allocation optimizer).
 
 **Capacity curve and allocation (fig 5):** blended net yield falls from 4.6% at a $1M budget to
 2.2% at $50M, as larger deposits dilute utilization in the same few markets. The real finding
@@ -139,6 +167,12 @@ leverage to one counterparty), not the event.
   is never modeled as a liquidator (only as a passive depositor).
 - EL's 1-day shock horizon (see Findings) likely understates EL for the larger shocks in the grid
   by a material amount; this is the single biggest known gap in the quantitative results.
+- The Morpho API's own derived APY fields (`monthlyApy`, `monthlySupplyApy`, and likely the
+  `quarterlySupplyApy`/`quarterlyNetSupplyApy` used throughout this memo's spread section too)
+  disagreed sharply with a ground-truth recomputation for this vault/market during T5. The 90d
+  `quarterlySupplyApy` figures weren't independently re-verified against raw on-chain history the
+  way T5 did for the 30d window -- they're probably stale/understated in the same direction, not
+  just possibly wrong.
 - The Stream/xUSD concentration numbers are read from the Morpho API's *current* indexed state,
   not a true block-395,834,395 position snapshot (oracle class and realized bad debt are genuine
   point-in-time/historical reads; concentration is a reasonable proxy, not verified pinned).
@@ -172,7 +206,7 @@ leverage to one counterparty), not the event.
 python run_all.py           # M1/M2: pulls the vault's markets and positions from chain + API
 python build_report.py      # M5-M12: oracle/dex/scenarios/stress/el/spread/optimize/stream_case + figures
 python build_cross_section.py  # M10 cross-section: all Ethereum USDC markets with supply > $1M
-pytest                      # T1, T2, T3, T4, T7 pass against live data; T6 is a confirmed xfail (see below)
+pytest                      # T1, T2, T3, T4, T5, T7 pass against live data; T6 is a confirmed xfail (see below)
 ```
 
 **T6 fails on purpose.** It fits `dex.py`'s slippage power law on a subset of real WBTC/USDC
@@ -195,6 +229,6 @@ keyrock-vault-risk/
   tests/    test_chain.py test_universe.py test_toy.py test_optimize.py
             test_spread_cross_section.py
             test_t1_positions.py test_t2_health_factor.py test_t3_irm.py
-            test_t4_liquidations.py test_t6_slippage_holdout.py
+            test_t4_liquidations.py test_t5_vault_apy.py test_t6_slippage_holdout.py
   data/processed/, reports/figures/
 ```

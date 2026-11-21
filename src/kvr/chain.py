@@ -57,6 +57,9 @@ FUNCTIONS = {
     ),
     # Uniswap V3 QuoterV2 (v3-periphery IQuoterV2.sol). Not a view function on-chain (it reverts
     # internally to compute the result), but eth_call works fine since we never send a real tx.
+    # Standard ERC4626 vault functions.
+    "totalAssets": ("totalAssets()", [], ["uint256"]),
+    "totalSupply": ("totalSupply()", [], ["uint256"]),
     "quoteExactInputSingle": (
         "quoteExactInputSingle((address,address,uint256,uint24,uint160))",
         ["(address,address,uint256,uint24,uint160)"],
