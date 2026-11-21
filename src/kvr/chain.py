@@ -47,6 +47,14 @@ FUNCTIONS = {
     "BASE_VAULT": ("BASE_VAULT()", [], ["address"]),
     "QUOTE_VAULT": ("QUOTE_VAULT()", [], ["address"]),
     "description": ("description()", [], ["string"]),
+    # Aave V3 Pool (aave-v3-core IPool.sol / DataTypes.sol). A struct-returning function is ABI
+    # encoded as its fields inlined in order, so this flat type list decodes it directly.
+    "getReserveData": (
+        "getReserveData(address)",
+        ["address"],
+        ["uint256", "uint128", "uint128", "uint128", "uint128", "uint128", "uint40", "uint16",
+         "address", "address", "address", "address", "uint128", "uint128", "uint128"],
+    ),
     # Uniswap V3 QuoterV2 (v3-periphery IQuoterV2.sol). Not a view function on-chain (it reverts
     # internally to compute the result), but eth_call works fine since we never send a real tx.
     "quoteExactInputSingle": (
