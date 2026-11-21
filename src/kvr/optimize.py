@@ -1,10 +1,14 @@
-"""M11: risk-priced allocation. Scope note (SPEC.md section 7's own cut list, applied given
-time constraints): the SLSQP cross-check is cut, keeping only the greedy water-filling solver
-it explicitly allows dropping.
+"""M11: risk-priced allocation.
 
 income_i(x) = x/(S_i+x) * Bor_i * r_borrow(Bor_i/(S_i+x)) * (1-fee_i)
 maximize sum_i [income_i(x_i) - EL_i * x_i], subject to caps and sum(x_i) <= B.
+
+Primary solver is greedy water-filling (easy to explain at a whiteboard); slsqp_check cross-
+checks it from several starting points, per SPEC.md M11.
 """
+
+import numpy as np
+from scipy.optimize import minimize
 
 from . import irm
 
@@ -54,6 +58,67 @@ def greedy_water_fill(markets, budget, step=50_000 * 10**6, el_rate_default=0.0)
         alloc[best_i] += this_step
         remaining -= this_step
     return alloc
+
+
+def _objective(x, markets, el_rate_default):
+    total = 0.0
+    for xi, m in zip(x, markets):
+        el_rate = m.get("el_rate", el_rate_default)
+        total += income_rate(xi, m["supply_assets"], m["borrow_assets"], m["rate_at_target"], m.get("fee", 0.0)) - el_rate * xi
+    return -total  # minimize() minimizes; we want to maximize total
+
+
+def slsqp_check(markets, budget, el_rate_default=0.0, n_starts=5, seed=0):
+    """Cross-checks greedy_water_fill with scipy.optimize.minimize(SLSQP) from several starting
+    points (zeros, even split, and random feasible points). Returns the best SLSQP solution
+    found (by objective value) alongside the greedy solution, for comparison -- not a
+    replacement, since SLSQP can land in a different local optimum depending on the start.
+
+    Known divergence, found by running this against the vault's real markets: for a market
+    already sitting at extreme utilization long enough that its rateAtTarget has drifted to
+    AdaptiveCurveIrm's own MAX_RATE_AT_TARGET ceiling (the vault's USDC/sNUSD market has been at
+    ~100% utilization for all of the last 90 days -- see spread.py's findings), income_rate(x)
+    spikes near x->0: observed 12,402% implied APY at a $1,000 deposit, and SLSQP actually
+    landed on a $309 allocation there implying 107,735% APY (a claimed $333k of "income" from a
+    $309 deposit) -- before settling down to a sane ~4.5% by $309k. This is SPEC.md M11's own
+    "hold Bor_i fixed" assumption
+    assumption breaking down exactly where utilization is already pinned near 100%: real borrow
+    demand is rate-sensitive, so no borrower actually keeps paying as the rate implied by a tiny
+    marginal deposit spikes -- this isn't capturable income, it's a modeling artifact. SLSQP's
+    gradient search can get pulled toward this spike from some starting points; greedy's coarse
+    $50k step size never samples a small enough x to find it, which is incidentally more robust
+    here, not because greedy is the better algorithm in general.
+    """
+    n = len(markets)
+    caps = [m.get("cap", budget) for m in markets]
+    bounds = [(0, min(cap, budget)) for cap in caps]
+    constraints = [{"type": "ineq", "fun": lambda x: budget - sum(x)}]
+
+    rng = np.random.default_rng(seed)
+    starts = [np.zeros(n), np.full(n, budget / n)]
+    for _ in range(n_starts - len(starts)):
+        raw = rng.random(n)
+        raw = raw / raw.sum() * budget
+        starts.append(np.minimum(raw, [b[1] for b in bounds]))
+
+    best = None
+    for x0 in starts:
+        result = minimize(_objective, x0, args=(markets, el_rate_default), method="SLSQP", bounds=bounds, constraints=constraints)
+        if result.success and (best is None or result.fun < best.fun):
+            best = result
+    if best is None:
+        return None
+
+    greedy_alloc = greedy_water_fill(markets, budget, el_rate_default=el_rate_default)
+    greedy_objective = -_objective(greedy_alloc, markets, el_rate_default)
+    slsqp_objective = -best.fun
+    return {
+        "slsqp_allocation": [max(0.0, v) for v in best.x],
+        "slsqp_objective": slsqp_objective,
+        "greedy_allocation": greedy_alloc,
+        "greedy_objective": greedy_objective,
+        "rel_diff": abs(slsqp_objective - greedy_objective) / max(abs(slsqp_objective), 1e-12),
+    }
 
 
 def capacity_curve(markets, budgets, step=50_000 * 10**6, el_rate_default=0.0):
