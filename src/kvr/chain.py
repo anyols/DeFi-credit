@@ -38,6 +38,22 @@ FUNCTIONS = {
     ),
     "rateAtTarget": ("rateAtTarget(bytes32)", ["bytes32"], ["int256"]),
     "price": ("price()", [], ["uint256"]),
+    # MorphoChainlinkOracleV2 fields (morpho-org/morpho-blue-oracles), each a zero address when
+    # that oracle doesn't use that slot. Not every Morpho oracle is this contract -- see oracle.py.
+    "BASE_FEED_1": ("BASE_FEED_1()", [], ["address"]),
+    "BASE_FEED_2": ("BASE_FEED_2()", [], ["address"]),
+    "QUOTE_FEED_1": ("QUOTE_FEED_1()", [], ["address"]),
+    "QUOTE_FEED_2": ("QUOTE_FEED_2()", [], ["address"]),
+    "BASE_VAULT": ("BASE_VAULT()", [], ["address"]),
+    "QUOTE_VAULT": ("QUOTE_VAULT()", [], ["address"]),
+    "description": ("description()", [], ["string"]),
+    # Uniswap V3 QuoterV2 (v3-periphery IQuoterV2.sol). Not a view function on-chain (it reverts
+    # internally to compute the result), but eth_call works fine since we never send a real tx.
+    "quoteExactInputSingle": (
+        "quoteExactInputSingle((address,address,uint256,uint24,uint160))",
+        ["(address,address,uint256,uint24,uint160)"],
+        ["uint256", "uint160", "uint32", "uint256"],
+    ),
 }
 
 _w3 = None
