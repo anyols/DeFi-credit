@@ -81,9 +81,16 @@ def w_taylor_compounded(x, n):
     return first_term + second_term + third_term
 
 
+ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
+
+
 def accrued_market_totals(market_id, raw_market, snapshot_timestamp):
     """Apply Morpho's exact accrual formula. Returns (total_supply_assets, total_borrow_assets,
     total_supply_shares, total_borrow_shares) accrued to snapshot_timestamp.
+
+    Matches Morpho.sol::_accrueInterest exactly, including its `if (marketParams.irm !=
+    address(0))` guard -- Morpho's "idle market" (loanToken set, everything else zero, used only
+    for uncollateralized parking) has no IRM and therefore no borrowing or accrual at all.
     """
     total_supply_assets, total_supply_shares, total_borrow_assets, total_borrow_shares, last_update, fee = raw_market
     elapsed = snapshot_timestamp - last_update
@@ -92,6 +99,9 @@ def accrued_market_totals(market_id, raw_market, snapshot_timestamp):
 
     params = chain.call_morpho("idToMarketParams", [bytes.fromhex(market_id[2:])], config.SNAPSHOT_BLOCK)
     loan_token, collateral_token, oracle, irm, lltv = params
+    if irm.lower() == ZERO_ADDRESS:
+        return total_supply_assets, total_borrow_assets, total_supply_shares, total_borrow_shares
+
     market_params_tuple = (loan_token, collateral_token, oracle, irm, lltv)
     (rate,) = chain.call(irm, "borrowRateView", [market_params_tuple, raw_market], config.SNAPSHOT_BLOCK)
 

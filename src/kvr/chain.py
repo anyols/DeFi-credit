@@ -36,6 +36,8 @@ FUNCTIONS = {
         [_MARKET_PARAMS_T, _MARKET_T],
         ["uint256"],
     ),
+    "rateAtTarget": ("rateAtTarget(bytes32)", ["bytes32"], ["int256"]),
+    "price": ("price()", [], ["uint256"]),
 }
 
 _w3 = None
@@ -64,7 +66,7 @@ def decode_result(fn_name, data):
 def call(to, fn_name, args, block):
     """Single eth_call against any contract. Returns a decoded tuple."""
     data = encode_call(fn_name, args)
-    raw = w3().eth.call({"to": to, "data": data}, block_identifier=block)
+    raw = w3().eth.call({"to": Web3.to_checksum_address(to), "data": data}, block_identifier=block)
     return decode_result(fn_name, raw)
 
 

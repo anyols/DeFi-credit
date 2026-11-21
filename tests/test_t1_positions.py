@@ -36,7 +36,7 @@ def test_t1_borrow_assets_reconcile():
         )
         pos = positions.build_positions(market_id, block)
         reconstructed = sum(
-            mm.toAssetsUp(int(r.borrow_shares), accrued_borrow_assets, accrued_borrow_shares)
+            mm.to_assets_up(int(r.borrow_shares), accrued_borrow_assets, accrued_borrow_shares)
             for r in pos.itertuples()
             if int(r.borrow_shares) > 0
         )
