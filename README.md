@@ -134,8 +134,15 @@ leverage to one counterparty), not the event.
 ```
 python run_all.py        # M1/M2: pulls the vault's markets and positions from chain + API
 python build_report.py   # M5-M12: oracle/dex/scenarios/stress/el/spread/optimize/stream_case + figures
-pytest                   # T1, T3, T4, T7 against live data; T2, T6 not implemented (see tests/)
+pytest                   # T1, T2, T3, T4, T7 pass against live data; T6 is a confirmed xfail (see below)
 ```
+
+**T6 fails on purpose.** It fits `dex.py`'s slippage power law on a subset of real WBTC/USDC
+Uniswap V3 quotes and checks the prediction on a held-out size, within SPEC.md's 15% tolerance.
+Real error is 28-41% depending on which size is held out, because the pool's effective exponent
+genuinely isn't constant across its own depth (see Findings) -- a real concentrated-liquidity
+pool, not a textbook passive AMM. Marked `xfail(strict=True)` rather than deleted or loosened,
+so this stays a visible, honest result.
 
 Needs `RPC_URL` in `.env` (archive-capable Ethereum mainnet; see `.env.example`).
 `config.SNAPSHOT_BLOCK` is pinned; re-running later re-derives everything else from that same
@@ -147,7 +154,8 @@ keyrock-vault-risk/
   src/kvr/  chain.py api.py universe.py positions.py morpho_math.py irm.py
             oracle.py dex.py scenarios.py stress.py el.py spread.py optimize.py
             stream_case.py plots.py
-  tests/    test_chain.py test_universe.py test_t1_positions.py test_t3_irm.py
-            test_t4_liquidations.py test_toy.py
+  tests/    test_chain.py test_universe.py test_toy.py
+            test_t1_positions.py test_t2_health_factor.py test_t3_irm.py
+            test_t4_liquidations.py test_t6_slippage_holdout.py
   data/processed/, reports/figures/
 ```

@@ -115,6 +115,7 @@ def get_market_positions(market_unique_key, borrowers_only=False):
       marketPositions(first: $first, skip: $skip,
                        where: {{ marketUniqueKey_in: [$id]{where_extra} }}) {{
         items {{
+          healthFactor
           user {{ address }}
           state {{ supplyShares borrowShares collateral borrowAssets supplyAssets collateralUsd }}
         }}
