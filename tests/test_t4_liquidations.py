@@ -11,12 +11,24 @@ block for the first failure (0x3d87329f..., block 26460969): it dropped 1.31% wi
 block, which is also exactly that event's relative error. Morpho's liquidate() calls
 IOracle.price() synchronously in the same transaction, so the correct read is the liquidation's
 own block, not block-1 -- confirmed by re-running all 50 events with that change: 0 mismatches.
+
+Second real bug, found on a later re-run and initially misdiagnosed: USDC/WBTC is actively
+liquidated, so an unfiltered "last 50 liquidations" shifts between runs -- which looked like the
+explanation for a transient ZeroDivisionError (one event's oracle price() returning exactly 0).
+Pinning the window to SNAPSHOT_BLOCK's timestamp (api.get_market_liquidations's before_timestamp)
+is still correct and still done below, for reproducibility -- but it did NOT fix the flakiness,
+which turned out to be a third, more fundamental bug: querying the exact same historical block
+for the exact same oracle 8 times in a row, back to back, returned 0 on 3 attempts and the real
+nonzero price on the other 5. That's RPC infrastructure non-determinism on the free-tier archive
+endpoint, not a shifting window, not an on-chain fact -- fixed in oracle.read_price (retries on a
+price of exactly 0, which is never legitimately correct for a live oracle), used here instead of
+a bare chain.call so this test benefits from that retry.
 """
 
 import pytest
 
 import config
-from kvr import api, chain
+from kvr import api, chain, oracle
 from kvr import morpho_math as mm
 
 pytestmark = pytest.mark.skipif(not config.RPC_URL, reason="RPC_URL not set; see .env.example")
@@ -30,12 +42,13 @@ LLTV = 860000000000000000
 
 def test_t4_replay_last_50_liquidations():
     lif = mm.liquidation_incentive_factor(LLTV)
-    liqs = api.get_market_liquidations(MARKET_ID, limit=50)
+    block_ts = chain.w3().eth.get_block(config.SNAPSHOT_BLOCK)["timestamp"]
+    liqs = api.get_market_liquidations(MARKET_ID, limit=50, before_timestamp=block_ts)
     assert len(liqs) > 0
 
     for liq in liqs:
         block = liq["blockNumber"]
-        (price,) = chain.call(ORACLE, "price", [], block)
+        price = oracle.read_price(ORACLE, block)
         repaid = int(liq["data"]["repaidAssets"])
         seized_actual = int(liq["data"]["seizedAssets"])
         seized_expected = mm.mul_div_down(mm.w_mul_down(repaid, lif), 10**36, price)

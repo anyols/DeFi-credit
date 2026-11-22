@@ -69,6 +69,22 @@ def classify(oracle_address, block):
     return {"class": cls, "fields": fields, "feeds": descriptions}
 
 
-def read_price(oracle_address, block):
-    (price,) = chain.call(oracle_address, "price", [], block)
-    return price
+def read_price(oracle_address, block, max_retries=12):
+    """Retries on a price of exactly 0, which is never a legitimate result for a live oracle
+    (it would mean every market using it has zero maxBorrow) -- found by hand: the same eth_call
+    to the same historical block, on a free-tier Alchemy archive RPC, returned 0 on 3 of 8
+    identical back-to-back attempts and the real nonzero price on the other 5. This is RPC
+    infrastructure non-determinism, not a bug in Morpho, the oracle, or this code -- but it's
+    silent (no exception, just a wrong answer), so a single read is not trustworthy on its own.
+
+    max_retries=12, not 5: with an empirically observed ~37.5% per-call failure rate, 5 retries
+    still fail ~0.7% of the time on a single oracle read, which compounds to a ~1-in-3 chance of
+    at least one spurious failure across 50 reads (T4 iterates 50 liquidations) -- confirmed by
+    hand, re-running T4 four times with max_retries=5 failed once. 12 retries brings a single
+    read's failure probability to ~0.375^12 =~ 3e-6, low enough that 50 reads are safe in practice.
+    """
+    for attempt in range(max_retries):
+        (price,) = chain.call(oracle_address, "price", [], block)
+        if price != 0:
+            return price
+    raise RuntimeError(f"oracle {oracle_address} returned price=0 on all {max_retries} attempts at block {block}")

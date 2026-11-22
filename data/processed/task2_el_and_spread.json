@@ -1,0 +1,152 @@
+[
+  {
+    "collateral":"wstUSR",
+    "onchain_supply_apy_pct":297995.7986842744,
+    "utilization":1.0,
+    "rate_pinned":true,
+    "spread_bps":null,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"DefiLlama history implausible (-70%..+200%\/day swings) vs stable current oracle price -- bad historical data"
+  },
+  {
+    "collateral":"cbBTC",
+    "onchain_supply_apy_pct":2.6090684765,
+    "utilization":0.6573841738,
+    "rate_pinned":false,
+    "spread_bps":15.0057745924,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":null
+  },
+  {
+    "collateral":"RLP",
+    "onchain_supply_apy_pct":297995.7986842744,
+    "utilization":1.0,
+    "rate_pinned":true,
+    "spread_bps":null,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"DefiLlama history implausible (-80%..+195%\/day swings) vs stable current oracle price -- bad historical data"
+  },
+  {
+    "collateral":"WBTC",
+    "onchain_supply_apy_pct":2.5916695465,
+    "utilization":0.6535185508,
+    "rate_pinned":false,
+    "spread_bps":13.2658815981,
+    "el_1d_bps":0.0000000593,
+    "el_7d_bps":88.6346802759,
+    "el_not_estimable_reason":null
+  },
+  {
+    "collateral":"PT-reUSD-10DEC2026",
+    "onchain_supply_apy_pct":7.34164104,
+    "utilization":0.8082031798,
+    "rate_pinned":false,
+    "spread_bps":488.2630309513,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"smooth accounting-NAV-like series (std 0.08%\/day) -- circular, same pattern as sNUSD"
+  },
+  {
+    "collateral":"AZND",
+    "onchain_supply_apy_pct":297995.7986842744,
+    "utilization":1.0,
+    "rate_pinned":true,
+    "spread_bps":null,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"FIXED oracle, zero DefiLlama price history"
+  },
+  {
+    "collateral":"PT-RLP-9APR2026",
+    "onchain_supply_apy_pct":297844.7162460123,
+    "utilization":0.9999967783,
+    "rate_pinned":true,
+    "spread_bps":null,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"DefiLlama history implausible (-79%..+155%\/day swings) -- bad historical data"
+  },
+  {
+    "collateral":"USR",
+    "onchain_supply_apy_pct":297995.7986842744,
+    "utilization":1.0,
+    "rate_pinned":true,
+    "spread_bps":null,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"DefiLlama history implausible (-74%..+205%\/day swings) vs stable current oracle price -- bad historical data"
+  },
+  {
+    "collateral":"wstETH",
+    "onchain_supply_apy_pct":2.5907517734,
+    "utilization":0.654106475,
+    "rate_pinned":false,
+    "spread_bps":13.1741042894,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":null
+  },
+  {
+    "collateral":"wFalconX",
+    "onchain_supply_apy_pct":4.9874000977,
+    "utilization":0.8587822904,
+    "rate_pinned":false,
+    "spread_bps":252.8389367141,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"smooth accounting-NAV-like series (std 0.11%\/day) -- circular"
+  },
+  {
+    "collateral":"mF-ONE",
+    "onchain_supply_apy_pct":6.1726949178,
+    "utilization":0.8796623523,
+    "rate_pinned":false,
+    "spread_bps":371.3684187309,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"smooth accounting-NAV-like series (std 0.11%\/day) -- circular"
+  },
+  {
+    "collateral":"fxSAVE",
+    "onchain_supply_apy_pct":3.3982078143,
+    "utilization":0.8086313167,
+    "rate_pinned":false,
+    "spread_bps":93.9197083737,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"smooth accounting-NAV-like series (std 0.03%\/day) -- circular"
+  },
+  {
+    "collateral":"apyUSD",
+    "onchain_supply_apy_pct":4.7531214572,
+    "utilization":0.8241849925,
+    "rate_pinned":false,
+    "spread_bps":229.4110726642,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"borderline (std 1.8%\/day, real but modest) -- not confidently BTC\/ETH-like, flagged not estimable, needs desk data"
+  },
+  {
+    "collateral":"PST",
+    "onchain_supply_apy_pct":6.4672153411,
+    "utilization":0.8678359173,
+    "rate_pinned":false,
+    "spread_bps":400.8204610549,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"smooth accounting-NAV-like series (std 0.001%\/day) -- circular"
+  },
+  {
+    "collateral":"USPC",
+    "onchain_supply_apy_pct":4.0342261741,
+    "utilization":0.8646123829,
+    "rate_pinned":false,
+    "spread_bps":157.5215443603,
+    "el_1d_bps":null,
+    "el_7d_bps":null,
+    "el_not_estimable_reason":"smooth accounting-NAV-like series (std 0.16%\/day) -- circular"
+  }
+]

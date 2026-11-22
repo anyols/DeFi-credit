@@ -126,23 +126,36 @@ def get_market_positions(market_unique_key, borrowers_only=False):
     return _paginate(query, {"id": market_unique_key}, "marketPositions")
 
 
-def get_market_liquidations(market_unique_key, limit=None):
-    query = """
-    query($id: String!, $first: Int, $skip: Int) {
-      marketTransactions(first: $first, skip: $skip,
-                          where: { marketUniqueKey_in: [$id], type_in: [Liquidation] }) {
-        items {
-          txHash timestamp blockNumber
-          data {
-            ... on MarketTransactionLiquidationData {
-              liquidator repaidAssets seizedAssets badDebtAssets
-            }
-          }
-        }
-        pageInfo { countTotal }
-      }
-    }
+def get_market_liquidations(market_unique_key, limit=None, before_timestamp=None):
+    """before_timestamp pins the result to "the last `limit` liquidations as of this timestamp"
+    instead of "as of whenever this happens to be called" -- found necessary while re-running
+    T4 against an actively-liquidated market (USDC/WBTC): without it, re-running minutes apart
+    returns a different window as new real liquidations occur, which is not reproducible and
+    not consistent with this project's SNAPSHOT_BLOCK pinning everywhere else. Pass
+    config.SNAPSHOT_BLOCK's own timestamp for a reproducible call.
     """
-    items = _paginate(query, {"id": market_unique_key}, "marketTransactions")
+    # $beforeTs is only declared/passed when used -- GraphQL's NoUnusedVariables validation
+    # rejects a declared-but-unreferenced variable, even a nullable one passed as None.
+    if before_timestamp is not None:
+        var_decl, where, variables = "$beforeTs: Int,", ", timestamp_lte: $beforeTs", {"beforeTs": before_timestamp}
+    else:
+        var_decl, where, variables = "", "", {}
+    query = f"""
+    query($id: String!, {var_decl} $first: Int, $skip: Int) {{
+      marketTransactions(first: $first, skip: $skip,
+                          where: {{ marketUniqueKey_in: [$id], type_in: [Liquidation]{where} }}) {{
+        items {{
+          txHash timestamp blockNumber
+          data {{
+            ... on MarketTransactionLiquidationData {{
+              liquidator repaidAssets seizedAssets badDebtAssets
+            }}
+          }}
+        }}
+        pageInfo {{ countTotal }}
+      }}
+    }}
+    """
+    items = _paginate(query, {"id": market_unique_key, **variables}, "marketTransactions")
     items.sort(key=lambda t: t["timestamp"], reverse=True)
     return items[:limit] if limit else items

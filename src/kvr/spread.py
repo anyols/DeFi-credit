@@ -5,7 +5,9 @@ import time
 import numpy as np
 import requests
 
-from . import api, chain, el, oracle
+from . import api, chain, el, irm, oracle
+
+ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
 
 AAVE_POOL = "0x87870Bca3F3fD6335C3F4ce8392D69350B4fA4E2"
 RAY = 10**27
@@ -48,10 +50,28 @@ def _historical_series(market_id, field, chain_id=1, lookback_days=100):
     return [p["y"] for p in points if p["y"] is not None]
 
 
-def market_quarterly_supply_apy(market_id, chain_id=1):
-    """Most recent quarterlySupplyApy point already IS a trailing-90d average, per the Morpho API."""
-    values = _historical_series(market_id, "quarterlySupplyApy", chain_id, lookback_days=100)
-    return values[-1] if values else None
+def onchain_supply_apy(market_id, block):
+    """Current, point-in-time supply APY computed directly from on-chain state -- borrow_apy *
+    utilization * (1-fee), via the same irm.borrow_rate path T3 already proved matches
+    borrowRateView bit-for-bit. Not a trailing average: Task 2's own instruction is to stop
+    trusting the Morpho API's APY fields at all (T5 found monthlyApy/monthlySupplyApy simply
+    wrong for a real market), so this replaces market_quarterly_supply_apy rather than
+    supplementing it. Returns 0.0 for a market with no IRM (idle markets have no borrowing, so
+    no yield) or no supply at all.
+    """
+    mid_bytes = bytes.fromhex(market_id[2:])
+    total_supply_assets, _tss, total_borrow_assets, _tbs, _lu, fee = chain.call_morpho("market", [mid_bytes], block)
+    if total_supply_assets == 0:
+        return 0.0
+    params = chain.call_morpho("idToMarketParams", [mid_bytes], block)
+    irm_addr = params[3]
+    if irm_addr.lower() == ZERO_ADDRESS:
+        return 0.0
+    (rate_at_target,) = chain.call(irm_addr, "rateAtTarget", [mid_bytes], block)
+    u = irm.utilization(total_borrow_assets, total_supply_assets)
+    borrow_rate_per_second, _end_rt = irm.borrow_rate(u, rate_at_target, 0)
+    borrow_apy = irm.apy_from_per_second_rate(borrow_rate_per_second)
+    return borrow_apy * (u / 10**18) * (1 - fee / 10**18)
 
 
 def utilization_time_at_cap(market_id, chain_id=1, threshold=0.99, lookback_days=90):

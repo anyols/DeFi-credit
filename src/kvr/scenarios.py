@@ -9,6 +9,8 @@ Oracle-shock mapping (SPEC.md M7):
 import numpy as np
 import requests
 
+import config
+
 UNDERLYING_SHOCKS = tuple(round(-x / 100, 2) for x in range(10, 65, 5))  # -10% .. -60%
 DEPEG_SHOCKS = tuple(round(-x / 100, 2) for x in range(2, 82, 2))  # -2% .. -80%, LST/LRT/yield-stable
 DEPTH_STRESS_KAPPA = (1, 2, 4)
@@ -61,7 +63,7 @@ def named_oracle_gap_scenario(market_shock=-0.3):
     return {"name": "oracle_gap", "market_shock": market_shock, "oracle_shock_ratio": 1.0, "kappa": 2, "path_steps": 1}
 
 
-def fetch_daily_prices(coin_id, span=_MAX_SPAN):
+def fetch_daily_prices(coin_id, span=_MAX_SPAN, end=None):
     """coin_id like 'ethereum:0x...'. Returns a list of (timestamp, price), oldest first, or
     [] if DefiLlama has no data for this asset.
 
@@ -75,7 +77,10 @@ def fetch_daily_prices(coin_id, span=_MAX_SPAN):
     source, per SPEC.md M7, even though fetch_daily_prices returns non-empty data for it.
     """
     try:
-        r = requests.get(_DEFILLAMA_CHART.format(coin=coin_id), params={"span": span, "period": "1d"}, timeout=30)
+        params = {"span": span, "period": "1d"}
+        if end is not None:
+            params["end"] = end
+        r = requests.get(_DEFILLAMA_CHART.format(coin=coin_id), params=params, timeout=30)
         r.raise_for_status()
         data = r.json()["coins"]
         if not data:
@@ -86,11 +91,43 @@ def fetch_daily_prices(coin_id, span=_MAX_SPAN):
         return []
 
 
-def exceedance_frequency(prices, horizon_days=1, declustering_days=1):
+def fetch_price_history(coin_id, chunks=None):
+    """Stitches config.PRICE_HISTORY_CHUNKS successive fetch_daily_prices windows together
+    (DefiLlama caps a single request at _MAX_SPAN points) to reach back further than one window
+    allows. Returns (timestamp, price) pairs, oldest first, deduplicated by timestamp.
+
+    Why this exists, not just a bigger span: found while fixing the EL==0 bug that even a
+    correctly 7d-declustered exceedance_frequency stayed ~0 on a single ~1.4-year window, because
+    that window contained no BTC crash large enough to reach the shock grid's lossy buckets --
+    a sample-length problem, not a horizon problem. See config.PRICE_HISTORY_CHUNKS.
+    """
+    chunks = chunks or config.PRICE_HISTORY_CHUNKS
+    all_points = {}
+    end = None
+    for _ in range(chunks):
+        points = fetch_daily_prices(coin_id, end=end)
+        if not points:
+            break
+        for ts, price in points:
+            all_points[ts] = price
+        end = points[0][0] - 1  # next chunk ends just before this one's earliest point
+    return sorted(all_points.items())
+
+
+def exceedance_frequency(prices, horizon_days=1, declustering_days=None):
     """lambda(x): empirical annual exceedance frequency of a <= -x move over `horizon_days`,
     from declustered historical returns. Returns a callable lambda_fn(x) -> expected count/year,
     or None if there isn't enough history to say anything (SPEC.md: 'not estimable, judgment only').
+
+    declustering_days defaults to horizon_days, not 1: rolling horizon_days-day returns overlap
+    by (horizon_days - 1) days between consecutive observations, so a single real crash shows up
+    as horizon_days nearly-identical "events" unless declustering spaces kept events at least
+    horizon_days apart. Found by hand while diagnosing an EL==0 bug: the 1-day-horizon version
+    of this already (correctly) uses declustering_days=1, which is why that specific bug wasn't
+    a declustering problem -- but get this wrong for horizon_days=7 and EL would be too HIGH
+    (double-counting one crash ~7x), the opposite-direction version of the same mistake.
     """
+    declustering_days = declustering_days if declustering_days is not None else horizon_days
     if len(prices) < horizon_days + 10:
         return None
     values = np.array([p for _, p in prices])

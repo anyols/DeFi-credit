@@ -56,3 +56,12 @@ UNDERLYING_SHOCK_RANGE = (-0.60, -0.10, 0.05)  # (min, max, step) on the loan/co
 DEPEG_SHOCK_RANGE = (-0.80, -0.02, 0.02)  # for LST/LRT/yield-stable collateral, depeg-only
 DEPTH_STRESS_KAPPA = (1, 2, 4)
 PATH_STEPS = (1, 6)  # 1 = gap, 6 = gradual
+
+# M9 EL: how many DefiLlama 500-day chunks to pull and stitch together for exceedance-frequency
+# history (DefiLlama caps a single request at 500 points -- see scenarios._MAX_SPAN). Found by
+# hand while fixing the EL==0 bug: even a correctly-declustered 7d horizon stayed ~0 on a single
+# 500-day (~1.4yr) window, because that window simply contains no observed BTC crash large
+# enough to overlap with the shock grid's lossy buckets (-25% or worse) -- not a horizon problem,
+# a sample-length problem. 5 chunks reaches back ~6.8 years, into BTC's 2022 (FTX) and 2021-2022
+# drawdowns, without needing an aggregator API key.
+PRICE_HISTORY_CHUNKS = 5
