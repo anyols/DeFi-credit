@@ -87,18 +87,53 @@ def usd_to_collateral_raw(usd_amount, price):
     return int(usd_amount * 10**42 / price)
 
 
+def detect_redemption_exit(collateral_token, symbol, block):
+    """Task 3: for collateral with no DEX depth from either source, checks for a VERIFIED
+    issuer-redemption path instead of guessing one from the symbol/collateral class alone -- an
+    unverified "probably NAV-like" label is not a finding (this project's own rule). ERC4626's
+    totalAssets() succeeding means this is a real vault share with a redeem()/withdraw() path;
+    Pendle PT notes (classify_collateral) redeem 1:1 for the underlying at maturity, a different
+    but equally real mechanism that doesn't implement totalAssets(). Tried by hand against every
+    zero-depth market in this universe: 4 of 10 (wstUSR, fxSAVE, apyUSD, USPC) are real ERC4626
+    vaults; the original review's own EXCHANGE_RATE-oracle heuristic turned out to match NONE of
+    them (they're all MARKET or FIXED oracle class here), so that guess is not used.
+    Returns a label string, or None if no redemption path could be verified.
+    """
+    try:
+        chain.call(collateral_token, "totalAssets", [], block)
+        return "redemption exit (ERC4626 vault), not modeled by DEX depth"
+    except Exception:
+        pass
+    if spread.classify_collateral(symbol) == "PT (fixed maturity)":
+        return "redemption exit at maturity (Pendle PT), not modeled by DEX depth"
+    return None
+
+
 def slippage_curve(m, block):
-    """Quote depth across dex.QUOTE_SIZES_TOKEN (USD-ish sizes), converted to this market's own
-    collateral via its own oracle price -- generalized from the old per-asset hardcoded decimals
-    and sizes (which assumed only 2 known collateral assets; the real universe has 15, with very
-    different unit prices).
+    """Task 3: quotes on-chain depth (direct pair + multi-hop via WETH/WBTC -- dex.best_route)
+    AND a no-key aggregator across dex.QUOTE_SIZES_TOKEN (USD-ish sizes, converted to this
+    market's own collateral via its own oracle price), and uses whichever is deeper
+    (dex.deeper_fit). Review addendum: "wstETH having zero depth is a bug, not a result" -- the
+    multi-hop routing fixes that specific case; detect_redemption_exit covers collateral with
+    genuinely no DEX depth at all, instead of silently reporting zero.
+    Returns {"source": "onchain"|"aggregator"|"redemption_exit"|None, "fit": (...) or None, "redemption_note": str or None}.
     """
     collateral_token = m["row"]["collateral_token"]
     if collateral_token.lower() == ZERO or m["price"] is None:
-        return None
+        return {"source": None, "fit": None, "redemption_note": None}
     sizes_raw = [usd_to_collateral_raw(usd, m["price"]) for usd in dex.QUOTE_SIZES_TOKEN]
-    points = dex.quote_curve(collateral_token, USDC, sizes_raw, block)
-    return dex.fit_slippage(points)
+    onchain_points = dex.quote_curve(collateral_token, USDC, sizes_raw, block)
+    try:
+        (decimals,) = chain.call(collateral_token, "decimals", [], block)
+        aggregator_points = dex.aggregator_quote_curve(collateral_token, USDC, sizes_raw, decimals)
+    except Exception:
+        aggregator_points = []
+    result = dex.deeper_fit(onchain_points, aggregator_points)
+    if result is None:
+        note = detect_redemption_exit(collateral_token, m["symbol"], block)
+        return {"source": "redemption_exit" if note else None, "fit": None, "redemption_note": note}
+    source, fit = result
+    return {"source": source, "fit": fit, "redemption_note": None}
 
 
 def main():
@@ -144,7 +179,10 @@ def main():
     figures.append(plots.plot_distance_to_liquidation_cdf({k: v for k, v in distances.items() if v}))
 
     slip_fits = {mid: slippage_curve(m, block) for mid, m in markets.items()}
-    results["slippage_fits"] = {markets[mid]["label"]: fit for mid, fit in slip_fits.items()}
+    results["slippage_fits"] = {markets[mid]["label"]: v for mid, v in slip_fits.items()}
+    results["redemption_exit_collateral"] = {
+        markets[mid]["label"]: v["redemption_note"] for mid, v in slip_fits.items() if v["source"] == "redemption_exit"
+    }
 
     results["liquidity_stress"] = {
         m["label"]: stress.liquidity_stress(m["supply_assets"], m["borrow_assets"]) for m in markets.values()
@@ -152,7 +190,7 @@ def main():
 
     stress_results, breakpoints = {}, {}
     for mid, m in markets.items():
-        fit = slip_fits.get(mid)
+        fit = slip_fits.get(mid, {}).get("fit")
         if fit is None or not m["positions"]:
             continue
         a, b, _cap = fit
@@ -194,7 +232,7 @@ def main():
             continue
         gap = paths["gap (K=1)"]
         oc = results["oracle_class"][m["label"]]
-        a, b, _cap = slip_fits[mid]
+        a, b, _cap = slip_fits[mid]["fit"]
         args = (m["positions"], m["lltv"], m["price"], m["price"], m["borrow_assets"], m["borrow_shares"])
         path7 = [stress.run_scenario(*args, s, scenarios.market_shock_to_oracle_ratio(s, oc), 1, 7, (a, b)) for s in scenarios.UNDERLYING_SHOCKS]
 

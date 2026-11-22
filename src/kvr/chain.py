@@ -65,6 +65,15 @@ FUNCTIONS = {
         ["(address,address,uint256,uint24,uint160)"],
         ["uint256", "uint160", "uint32", "uint256"],
     ),
+    # Multi-hop quote: path is abi.encodePacked(token0, fee0, token1, fee1, token2, ...), NOT
+    # standard ABI-encoded -- see dex.py's own path packing. Verified against the same
+    # Uniswap/v3-periphery IQuoterV2.sol as quoteExactInputSingle above.
+    "quoteExactInput": (
+        "quoteExactInput(bytes,uint256)",
+        ["bytes", "uint256"],
+        ["uint256", "uint160[]", "uint32[]", "uint256"],
+    ),
+    "decimals": ("decimals()", [], ["uint8"]),  # standard ERC20
 }
 
 _w3 = None
