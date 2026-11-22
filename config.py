@@ -183,3 +183,22 @@ BACKTEST_DEX_CHECK_SIZE_USD = 100_000
 BACKTEST_SENSITIVITY_K = (3, 5, 10)
 BACKTEST_SENSITIVITY_SWITCH_BPS = (10, 25, 50)
 BACKTEST_SENSITIVITY_REBALANCE_DAYS = (1, 7)
+
+# Task 7 (new module, basis.py): "deploy USDC as a lender, or run the ETH basis trade?"
+BASIS_LOOKBACK_DAYS = BACKTEST_LOOKBACK_DAYS  # same 18-month window as backtest.py
+BASIS_PERP_SYMBOL = "ETHUSDT"  # Binance USDT-margined ETH perp -- public API, no key needed
+# Staking yield (wstETH's own stEthPerToken() conversion rate) is smooth/slow-moving, unlike
+# funding -- sampled every N days on-chain instead of daily, to keep RPC round trips bounded
+# (daily sampling over 548 days would cost ~40x more block-lookup + eth_call pairs for a
+# quantity that doesn't move much day to day). A labeled simplification, not hidden.
+BASIS_STAKING_YIELD_SAMPLE_DAYS = 14
+# Perp trading fee, round-trip (enter + exit), amortized as a flat daily drag over the full
+# window -- an assumption (no live fee-schedule integration), not a measurement.
+BASIS_PERP_FEE_BPS_ROUNDTRIP = 8
+# Target LTV for the levered basis trade's Morpho USDC borrow against wstETH collateral --
+# an assumption (a real trader would size this around their own risk tolerance), not a
+# measurement. Leverage = 1/(1-LTV).
+BASIS_TARGET_LTV = 0.70
+# Stress size for the perp margin buffer check: $ loss on the short perp leg, per $1 of levered
+# notional, for a +X% ETH move against the position.
+BASIS_MARGIN_STRESS_PCT = 0.10

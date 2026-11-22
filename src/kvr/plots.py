@@ -262,3 +262,25 @@ def plot_backtest_equity_curves(curves, name="fig11_backtest_equity_curves.png")
     ax.grid(alpha=0.3, which="both")
     fig.autofmt_xdate()
     return _save(fig, name)
+
+
+def plot_basis_carry(lend_rate, basis_carry_series, levered_carry_series, name="fig12_basis_carry.png"):
+    """Task 7. lend_rate: a single reference rate (e.g. Aave's own 90d avg) drawn as a flat
+    line -- the LEND comparison. basis_carry_series/levered_carry_series: [(day, annualized_carry
+    or None), ...]; None days are gapped, not interpolated."""
+    import datetime as dt
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    for label, series, style in (("BASIS (1x)", basis_carry_series, {}), ("LEVERED BASIS", levered_carry_series, {"linestyle": "--"})):
+        xs = [dt.datetime.utcfromtimestamp(d) for d, v in series if v is not None]
+        ys = [v * 100 for _d, v in series if v is not None]
+        ax.plot(xs, ys, label=label, **style)
+    if lend_rate is not None:
+        ax.axhline(lend_rate * 100, color="gray", linestyle=":", label="LEND (Aave, 90d avg)")
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_ylabel("Annualized carry (%)")
+    ax.set_title("ETH basis trade vs lending: annualized carry over time")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3)
+    fig.autofmt_xdate()
+    return _save(fig, name)

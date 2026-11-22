@@ -79,6 +79,10 @@ FUNCTIONS = {
     # (0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419) verified by hand: description()=="ETH / USD",
     # decimals()==8, and latestRoundData() returns a plausible live price.
     "latestRoundData": ("latestRoundData()", [], ["uint80", "int256", "uint256", "uint256", "uint80"]),
+    # wstETH's own conversion rate (Lido's WstETH.sol) -- verified by hand: returns a plausible,
+    # monotonically-increasing stETH-per-wstETH value (1.2498 at SNAPSHOT_BLOCK). Used by
+    # basis.py for the staking-yield leg of the ETH basis trade.
+    "stEthPerToken": ("stEthPerToken()", [], ["uint256"]),
 }
 
 _w3 = None

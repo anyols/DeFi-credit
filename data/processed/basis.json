@@ -1,0 +1,38 @@
+{
+  "window_start_day": 1747958400,
+  "window_end_day": 1795219200,
+  "table": {
+    "LEND (Aave 90d avg)": {
+      "label": "LEND",
+      "mean_annualized": 0.038849017777777786
+    },
+    "BASIS (1x)": {
+      "label": "BASIS",
+      "n_days": 547,
+      "mean_annualized": 0.058861455635245516,
+      "vol_annualized": 0.04749965915758459,
+      "pct_days_negative": 0.11151736745886655,
+      "worst_30d_avg_annualized": -0.014961698547461816,
+      "sharpe_vs_lend": 0.4213175044282862
+    },
+    "LEVERED BASIS": {
+      "label": "LEVERED BASIS",
+      "n_days": 547,
+      "mean_annualized": 0.09450172837639201,
+      "vol_annualized": 0.15371708739339163,
+      "pct_days_negative": 0.22486288848263253,
+      "worst_30d_avg_annualized": -0.13063651143804553,
+      "sharpe_vs_lend": 0.3620463511397937
+    }
+  },
+  "risks": {
+    "pct_days_funding_negative": 0.19926873857404023,
+    "target_ltv": 0.7,
+    "lltv": 0.86,
+    "leverage": 3.333333333333333,
+    "depeg_pct_to_liquidation": 0.18604651162790697,
+    "margin_stress_pct": 0.1,
+    "margin_buffer_needed_frac_of_equity": 0.3333333333333333
+  },
+  "figure": "reports\\figures\\fig12_basis_carry.png"
+}

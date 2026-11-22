@@ -165,14 +165,20 @@ Every named assumption lives in `config.py`, with its reasoning in the comment n
 - No smart-contract risk, no USDC depeg (assumed at par throughout), gas receipts and the ETH/USD
   Chainlink feed are trusted as read; a failed read is excluded, never defaulted to zero.
 
+## Lending vs. the ETH basis trade (fig 12)
+
+A comparison, not a strategy claim: over the same 18 months, 1x basis (long wstETH + short ETH
+perp: staking yield + funding - fees) averaged 5.89%/yr vs. Aave's 3.88%/yr, but with real tail
+risk (11% of days negative, worst 30-day stretch -1.50%/yr annualized). Levering it 3.33x via a
+Morpho USDC borrow against wstETH (70% target LTV, 86% LLTV) raises the mean to 9.45%/yr but
+*lowers* the Sharpe ratio (0.36 vs. 0.42 unlevered) -- the borrow-cost drag amplifies volatility
+faster than return. A +10% ETH move alone would require posting 33% of the trade's equity as
+additional perp margin, separate from the Morpho position entirely.
+
 ## Next steps
 
 - A calibrated stress engine: real aggregator-level depth per collateral and a multi-step
   liquidation-ordering model, to replace the single-venue aggregate-dump assumption flagged above.
-- The funded carry trade (Aave-borrow-against-collateral into a Morpho deposit) vs. a basis trade
-  on the same collateral, to see which actually captures more of these markets' residual spread.
-- Relative value across markets carrying the same structural risk (same oracle class, same DEX
-  depth, same collateral class) instead of one market at a time.
 - A delay-reconstruction method that accounts for intermediate position changes (partial
   liquidations, supply/withdraw) instead of assuming a fixed breakeven across a long window --
   needed before AZND/RLP/USR/wstUSR/PT-RLP-9APR2026's delay can be reported at all.
