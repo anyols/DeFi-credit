@@ -163,18 +163,20 @@ def plot_stream_case(comparison, name="fig6_stream_case.png"):
 
 
 def plot_liq_edge_profitability(summaries, name="fig7_liq_edge_profitability.png"):
-    """Task 4. summaries: {label: {"profitable_share_dex":.., "profitable_share_mm":..}}."""
-    labels = [l for l, s in summaries.items() if s["profitable_share_dex"] is not None or s["profitable_share_mm"] is not None]
+    """Task 4 (review fix 1/2). summaries: {label: {"profitable_share_count":.., "profitable_share_volume":..}}
+    -- count-weighted vs USD-volume-weighted profitable share, per collateral's own exit model
+    (perp hedge / issuer redemption / hold-to-maturity -- no generic "MM" anymore)."""
+    labels = [l for l, s in summaries.items() if s["profitable_share_count"] is not None or s["profitable_share_volume"] is not None]
     fig, ax = plt.subplots(figsize=(8, 5))
     if labels:
         x = np.arange(len(labels))
         width = 0.35
-        ax.bar(x - width / 2, [(summaries[l]["profitable_share_dex"] or 0) * 100 for l in labels], width, label="DEX execution")
-        ax.bar(x + width / 2, [(summaries[l]["profitable_share_mm"] or 0) * 100 for l in labels], width, label="MM execution (assumed spread)")
+        ax.bar(x - width / 2, [(summaries[l]["profitable_share_count"] or 0) * 100 for l in labels], width, label="By count")
+        ax.bar(x + width / 2, [(summaries[l]["profitable_share_volume"] or 0) * 100 for l in labels], width, label="By USD volume")
         ax.set_xticks(x)
         ax.set_xticklabels(labels, rotation=20, ha="right")
     ax.set_ylabel("Profitable share of real liquidations (%)")
-    ax.set_title("Liquidator profitability over the real sample, DEX vs assumed MM execution")
+    ax.set_title("Liquidator profitability over the real sample, by count vs by volume")
     ax.legend()
     ax.grid(alpha=0.3)
     return _save(fig, name)

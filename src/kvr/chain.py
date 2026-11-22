@@ -74,6 +74,11 @@ FUNCTIONS = {
         ["uint256", "uint160[]", "uint32[]", "uint256"],
     ),
     "decimals": ("decimals()", [], ["uint8"]),  # standard ERC20
+    # Chainlink AggregatorV3Interface -- used directly (not via MorphoChainlinkOracleV2) for
+    # liq_edge.py's block-level ETH/USD gas pricing. ETH/USD feed address
+    # (0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419) verified by hand: description()=="ETH / USD",
+    # decimals()==8, and latestRoundData() returns a plausible live price.
+    "latestRoundData": ("latestRoundData()", [], ["uint80", "int256", "uint256", "uint256", "uint80"]),
 }
 
 _w3 = None

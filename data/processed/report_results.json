@@ -217,8 +217,8 @@
     "USDC/wstETH": {
       "source": "aggregator",
       "fit": [
-        9.229682555885035e-43,
-        1.839344550390037,
+        1.3897236263571493e-38,
+        1.6434081650548518,
         9522958805771940265984
       ],
       "redemption_note": null
@@ -246,8 +246,8 @@
     "USDC/PST": {
       "source": "aggregator",
       "fit": [
-        1.521893032561768e-17,
-        1.1237372721108736,
+        1.5218935176541177e-17,
+        1.1237371718403275,
         870804789078
       ],
       "redemption_note": null
@@ -337,53 +337,53 @@
   },
   "btc_price_history_includes_2020_03_12": true,
   "lambda_btc_1d_25pct_with_90pct_ci": {
-    "rate_per_year": 0.0,
-    "count": 0,
+    "rate_per_year": 0.14639345041559024,
+    "count": 1,
     "ci_90pct": [
-      0.0,
-      0.4385560051739104
+      0.0075090023485761504,
+      0.6944706951512888
     ],
-    "years_covered": 6.830900131822445
+    "years_covered": 6.830906691256623
   },
-  "worst_btc_1d_decline_in_sample": -0.2446089051554966,
+  "worst_btc_1d_decline_in_sample": -0.2759017030120652,
   "el_bps": {
     "USDC/cbBTC": {
-      "1d_bps": 6.743858928510088e-07,
-      "7d_path_bps": 28.032370053056233,
-      "7d_gap_upper_bound_bps": 28.796368756273594
+      "1d_bps": 0.11409688908548903,
+      "7d_path_bps": 28.03234313474296,
+      "7d_gap_upper_bound_bps": 28.79634110432431
     },
     "USDC/WBTC": {
-      "1d_bps": 4.2794024878392e-08,
-      "7d_path_bps": 88.63462965611666,
-      "7d_gap_upper_bound_bps": 88.63462965611666
+      "1d_bps": 0.9648956416144554,
+      "7d_path_bps": 88.63454454398654,
+      "7d_gap_upper_bound_bps": 88.63454454398654
     },
     "USDC/wstETH": {
-      "1d_bps": 0.008131534061210408,
-      "7d_path_bps": 0.0033126313363735726,
-      "7d_gap_upper_bound_bps": 36.908412347372604
+      "1d_bps": 0.2675791171781135,
+      "7d_path_bps": 0.003312628155392161,
+      "7d_gap_upper_bound_bps": 36.90837690576692
     }
   },
   "model_vs_realized_bad_debt": {
     "USDC/cbBTC": {
-      "model_implied_annual_loss_usd_7d_path": 758718.4551584532,
-      "model_implied_annual_loss_usd_7d_gap_upper_bound": 779396.6894551263,
-      "realized_annual_loss_usd": 0.00031050080649241307,
+      "model_implied_annual_loss_usd_7d_path": 758717.7265928335,
+      "model_implied_annual_loss_usd_7d_gap_upper_bound": 779395.9410330628,
+      "realized_annual_loss_usd": 0.0003105005083314669,
       "n_liquidation_events_in_sample": 148,
-      "years_covered": 6.830900131822445
+      "years_covered": 6.830906691256623
     },
     "USDC/WBTC": {
-      "model_implied_annual_loss_usd_7d_path": 1385666.0091200455,
-      "model_implied_annual_loss_usd_7d_gap_upper_bound": 1385666.0091200455,
-      "realized_annual_loss_usd": 0.00563337177493378,
+      "model_implied_annual_loss_usd_7d_path": 1385664.6785228949,
+      "model_implied_annual_loss_usd_7d_gap_upper_bound": 1385664.6785228949,
+      "realized_annual_loss_usd": 0.005633366365442328,
       "n_liquidation_events_in_sample": 248,
-      "years_covered": 6.830900131822445
+      "years_covered": 6.830906691256623
     },
     "USDC/wstETH": {
-      "model_implied_annual_loss_usd_7d_path": 12.339210261226945,
-      "model_implied_annual_loss_usd_7d_gap_upper_bound": 137480.03146672415,
-      "realized_annual_loss_usd": 0.003332064524551539,
+      "model_implied_annual_loss_usd_7d_path": 12.339198412399083,
+      "model_implied_annual_loss_usd_7d_gap_upper_bound": 137479.89945039633,
+      "realized_annual_loss_usd": 0.003332061324909249,
       "n_liquidation_events_in_sample": 334,
-      "years_covered": 6.830900131822445
+      "years_covered": 6.830906691256623
     }
   },
   "loss_given_shock_not_estimable": {
@@ -895,17 +895,17 @@
   "spread_waterfall": {
     "USDC/cbBTC": {
       "spread_bps": -127.58459679882657,
-      "el_bps": 28.414369404664914,
+      "el_bps": 28.414342119533636,
       "liquidity_bps": 0.0,
-      "residual_bps": -155.99896620349148,
+      "residual_bps": -155.9989389183602,
       "supply_apy": 0.0260906847645618,
       "utilization_time_at_cap": 0.0
     },
     "USDC/WBTC": {
       "spread_bps": -129.32448979320407,
-      "el_bps": 88.63462965611666,
+      "el_bps": 88.63454454398654,
       "liquidity_bps": 0.0,
-      "residual_bps": -217.95911944932072,
+      "residual_bps": -217.9590343371906,
       "supply_apy": 0.02591669546512405,
       "utilization_time_at_cap": 0.0
     },
@@ -919,9 +919,9 @@
     },
     "USDC/wstETH": {
       "spread_bps": -129.41626710184056,
-      "el_bps": 18.455862489354487,
+      "el_bps": 18.455844766961157,
       "liquidity_bps": 0.0,
-      "residual_bps": -147.87212959119506,
+      "residual_bps": -147.8721118688017,
       "supply_apy": 0.0259075177342604,
       "utilization_time_at_cap": 0.0
     },
@@ -1001,14 +1001,14 @@
     "oracle_class": "UNKNOWN",
     "concentration": {
       "n_borrowers": 2,
-      "top1_share": 0.999998581280537,
+      "top1_share": 0.9999985812805376,
       "top5_share": 1.0,
-      "hhi": 0.9999971625650994
+      "hhi": 0.9999971625651007
     },
     "realized_bad_debt": {
       "n_liquidations": 1,
       "sum_bad_debt_from_liquidation_events": 187573800,
-      "current_borrow_assets_usd": 293958615.3966564,
+      "current_borrow_assets_usd": 294205543.38619226,
       "current_mark_to_market_bad_debt_usd": 288143926.24560803,
       "realized_bad_debt_usd": 0
     },

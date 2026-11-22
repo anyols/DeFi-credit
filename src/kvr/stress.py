@@ -106,6 +106,8 @@ def run_scenario(
     tb_assets, tb_shares = total_borrow_assets, total_borrow_shares
     realized_loss = 0
     n_executed = 0
+    ever_liquidatable_users = set()
+    executed_users = set()
     oracle_price = base_oracle_price
     market_price = base_market_price
 
@@ -117,9 +119,18 @@ def run_scenario(
         frac = step / path_steps
         oracle_price = int(base_oracle_price * (1 + (oracle_shock_ratio - 1) * frac))
         market_price = int(base_market_price * (1 + (market_ratio_final - 1) * frac))
+        # Found by hand (Task 4 review): the OLD "n_stranded": len(remaining) counted every
+        # position never executed, including the vast majority that were simply healthy and
+        # never at risk at all -- making n_stranded > 0 (and therefore find_breakpoint_shock's
+        # "has anything stranded" check) trivially true at almost any shock, even 0%, for any
+        # market with more than a handful of positions. Track only positions that were ACTUALLY
+        # liquidatable at some step, separately from ones that executed.
+        at_risk = positions_at_risk(list(remaining.values()), lltv, oracle_price, tb_assets, tb_shares)
+        ever_liquidatable_users.update(p["user"] for p in at_risk if p["liquidatable"])
         result = run_path_step(list(remaining.values()), lltv, oracle_price, market_price, tb_assets, tb_shares, slip_s, gas_cost_loan_units)
         for ex in result["executed"]:
             remaining.pop(ex["user"], None)
+            executed_users.add(ex["user"])
         realized_loss += result["bad_debt_assets"]
         n_executed += len(result["executed"])
         tb_assets, tb_shares = result["total_borrow_assets"], result["total_borrow_shares"]
@@ -137,7 +148,7 @@ def run_scenario(
         "realized_loss": realized_loss,
         "economic_loss": economic_loss,
         "n_executed": n_executed,
-        "n_stranded": len(remaining),
+        "n_stranded": len(ever_liquidatable_users - executed_users),
         "total_borrow_assets_before": total_borrow_assets,
     }
 

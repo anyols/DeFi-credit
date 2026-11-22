@@ -88,15 +88,46 @@ LIQ_EDGE_LOOKBACK_DAYS = 730
 LIQ_EDGE_DELAY_SAMPLE_PER_MARKET = 30
 # How far back (in hours) the delay-to-liquidation search looks for the oracle price first
 # crossing a position's breakeven price, via exponential-backoff + binary refine (not a linear
-# hourly scan -- O(log) reads, not O(hours)). A breach further back than this is reported as
-# "predates window", not a fabricated number past what was actually searched.
+# hourly scan -- O(log) reads, not O(hours)). Tried first at the cheap default; an event that
+# hits this bound (the breach predates it) is retried once at LIQ_EDGE_MAX_DELAY_HOURS_EXTENDED
+# (review fix 4) rather than reported as a fabricated number past what was actually searched.
 LIQ_EDGE_MAX_DELAY_HOURS = 168
+LIQ_EDGE_MAX_DELAY_HOURS_EXTENDED = 24 * LIQ_EDGE_LOOKBACK_DAYS  # the full lookback window, only
+# tried when the cheap 168h search hits its own bound -- the common case (most real liquidations
+# are fast) never pays for this, only the AZND/RLP/USR/wstUSR-style "stuck for a long time" cases.
 LIQ_EDGE_BLOCKS_PER_HOUR = 300  # ~12s/block on Ethereum mainnet -- an approximation, labeled
-# No real OTC/market-maker quote source exists for this project's scope -- modeled as a fixed
-# spread off the oracle mid-price with zero size-dependent slippage, vs the DEX side's own
-# fitted, size-dependent slippage curve. An assumption, not a measurement.
-LIQ_EDGE_MM_SPREAD_BPS = 10
-WETH_COIN = "ethereum:0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"  # for gas cost in USD only
+
+# Review fix 1: events below this repaid-USD size are dust -- excluded from the headline
+# profitability stats (gas cost dominates for a tiny liquidation almost by construction) and
+# reported as a separate count/volume instead of silently diluting the real picture.
+LIQ_EDGE_DUST_THRESHOLD_USD = 1_000
+
+# Review fix 2: per-collateral-class exit model, replacing the old one-size-fits-all "MM" spread.
+# BTC/ETH family (spread.classify_collateral in BTC/ETH-LST): a liquidator hedges the seized
+# collateral via a liquid perpetual future (BTC-PERP/ETH-PERP are among the deepest crypto perp
+# markets) rather than selling spot -- cost modeled as a flat spread (taker fee + a short-horizon
+# funding assumption), since no real perp-cost feed is integrated. An assumption, not a measurement.
+LIQ_EDGE_HEDGE_COST_BPS = 5
+
+# Redeemable yield-bearing collateral: exit cost = cooldown_days * cost_of_capital (daily) +
+# redemption_haircut_bps, instead of a DEX/MM sale. Verified by web research (2026-11-22; see the
+# Task 4 review report) that NONE of these had a single, reliably-sourced cooldown/fee number:
+# RLP and USR (both Resolv Protocol) gate redemption on a 110% collateralization ratio, not a
+# fixed time window; wstUSR's own underlying protocol was flagged by a third-party curation
+# report as exploited ("HACKED -- DO NOT USE") with staking/unstaking reportedly halted, so its
+# redemption status is in doubt, not just its cooldown length; apyUSD (Apyx) has a real but
+# unquantified on-chain unlock delay. Only fxSAVE (f(x) Protocol)'s own primary-source
+# integration docs describe something close to synchronous, cooldown-free redemption, used here
+# with low confidence, not as a settled fact. None means "not estimable" -- never a guessed
+# number (this project's own rule) -- so RLP/USR/wstUSR/apyUSD's exit cost is reported as not
+# estimable rather than computed from an invented day count.
+LIQ_EDGE_REDEMPTION_COOLDOWN_DAYS = {"RLP": None, "USR": None, "wstUSR": None, "apyUSD": None, "fxSAVE": 0}
+LIQ_EDGE_REDEMPTION_HAIRCUT_BPS = {"RLP": None, "USR": None, "wstUSR": None, "apyUSD": None, "fxSAVE": 0}
+
+# Opportunity cost of capital for both the redemption-cooldown and PT-hold-to-maturity carry
+# calculations. Prefer the live Aave USDC 90d supply rate (spread.aave_usdc_supply_rate_90d_avg)
+# as a real, already-used-elsewhere risk-free proxy; this is the fallback if that call fails.
+LIQ_EDGE_COST_OF_CAPITAL_ANNUAL_FALLBACK = 0.05
 
 # Max allowed deviation (in days) between a return window's actual elapsed time and its nominal
 # horizon_days, before that window is dropped from exceedance_frequency rather than silently

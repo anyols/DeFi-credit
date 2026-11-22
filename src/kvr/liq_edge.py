@@ -1,8 +1,10 @@
 """Task 4 (new module): "When do DeFi liquidators walk away, and who gets paid when they do?"
 
 Per-market, per-liquidation-event reconstruction over config.LIQ_EDGE_LOOKBACK_DAYS: gas cost
-(real tx receipts), DEX-vs-MM execution profitability, insolvency (badDebtAssets > 0), and
-"left on the table" (unrecovered bad debt -- ground truth from the event itself, not a guess).
+(real tx receipts, priced via a block-level Chainlink ETH/USD read -- review fix 1), per-
+collateral-class exit economics (review fix 2: perp hedge for BTC/ETH, issuer redemption for
+redeemable yield-bearing collateral, hold-to-maturity for PT notes), insolvency (badDebtAssets
+> 0), and "left on the table" (unrecovered bad debt -- ground truth from the event itself).
 
 The expensive piece -- how long a position sat liquidatable before it was actually liquidated,
 found by searching the ORACLE's own historical price against the position's breakeven price --
@@ -10,15 +12,19 @@ is capped per market (config.LIQ_EDGE_DELAY_SAMPLE_PER_MARKET events, searched v
 backoff + binary refine so each one costs O(log(max_hours)) oracle reads, not a linear hourly
 scan). Found by hand: the real 24-month universe has 886 Liquidate events; reconstructing all of
 them this way would be well over an hour of RPC round trips for a number this project already
-gets, bounded and labeled, from a sample -- the same precedent as T4's "replay the last 50".
+gets, bounded and labeled, from a sample -- the same sampling precedent as T4's "replay the last 50".
 """
 
+import datetime as dt
+import re
 import statistics
 
 import config
 from . import dex, oracle
 from . import chain as chain_mod
 from . import morpho_math as mm
+
+ETH_USD_CHAINLINK_FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419"  # verified by hand, see chain.py
 
 
 def breakeven_price(debt_raw, collateral_raw, lltv_raw):
@@ -27,7 +33,7 @@ def breakeven_price(debt_raw, collateral_raw, lltv_raw):
     (collateral*price // 1e36) * lltv // 1e18 == debt, algebraically (dropping the floor
     roundings): price = debt * 1e36 * 1e18 / (collateral * lltv). Float, not integer-exact --
     this is reconstruction/analytics, not a protocol replication (this project's own "integer-
-    exact where the protocol is, float for analytics" rule). Hand-verified in tests/test_liq_edge.py.
+    exact where the protocol is, float for analytics" rule). Hand-verified in tests/test_t8_t9_liq_edge.py.
     """
     if collateral_raw == 0 or lltv_raw == 0:
         return None
@@ -44,34 +50,64 @@ def position_debt_and_collateral(market_id, user, block):
     return debt, collateral
 
 
-def _nearest_price(prices, ts):
-    """prices: [(timestamp, price), ...]. Nearest-by-timestamp lookup, not interpolation -- good
-    enough for valuing a single historical gas cost, which this is only used for."""
-    if not prices:
-        return None
-    return min(prices, key=lambda p: abs(p[0] - ts))[1]
+def eth_usd_price_at_block(block, max_retries=5):
+    """Chainlink's own ETH/USD feed, read directly (not via a Morpho market's oracle) and at the
+    exact block -- review fix 1: replaces the old DefiLlama-daily-price gas conversion, which
+    could be off by whatever ETH moved intraday. Retries on a non-positive answer, same
+    discipline as oracle.read_price (a 0 or negative price is never accepted as real)."""
+    for _ in range(max_retries):
+        _round_id, answer, _started, _updated, _answered_in_round = chain_mod.call(ETH_USD_CHAINLINK_FEED, "latestRoundData", [], block)
+        if answer > 0:
+            return answer / 10**8  # feed is 8-decimal, verified by hand (chain.py)
+    raise RuntimeError(f"ETH/USD Chainlink feed returned a non-positive answer on all {max_retries} attempts at block {block}")
 
 
-def gas_cost_usd(tx_hash, timestamp, weth_prices):
+def gas_cost_usd(tx_hash, block):
     """Real gasUsed * effectiveGasPrice from the transaction receipt, converted to USD via the
-    nearest daily WETH price to the event's own timestamp (no extra RPC call for the block, since
-    the Liquidate event already carries its own timestamp). None if the receipt can't be fetched
-    or no price is available -- never a fabricated fallback cost."""
+    block-level Chainlink ETH/USD price (review fix 1) -- not a daily DefiLlama close. None if
+    the receipt or the feed read fails -- never a fabricated fallback cost."""
     try:
         receipt = chain_mod.w3().eth.get_transaction_receipt(tx_hash)
+        eth_usd = eth_usd_price_at_block(block)
     except Exception:
         return None
     gas_eth = receipt["gasUsed"] * receipt["effectiveGasPrice"] / 1e18
-    price = _nearest_price(weth_prices, timestamp)
-    return gas_eth * price if price is not None else None
+    return gas_eth * eth_usd
 
 
-def event_economics(event, oracle_address, weth_prices, slip_fit):
+_PT_MATURITY_RE = re.compile(r"(\d{1,2})([A-Za-z]{3})(\d{4})$")
+
+
+def parse_pt_maturity(symbol):
+    """"PT-reUSD-10DEC2026" -> date(2026, 12, 10). None if the symbol doesn't match this
+    Pendle-style naming convention -- never a guessed maturity."""
+    m = _PT_MATURITY_RE.search(symbol)
+    if not m:
+        return None
+    day, mon, year = m.groups()
+    try:
+        return dt.datetime.strptime(f"{day}{mon.title()}{year}", "%d%b%Y").replace(tzinfo=dt.timezone.utc).date()
+    except ValueError:
+        return None
+
+
+def event_economics(event, oracle_address, symbol, collateral_class, slip_fit, cost_of_capital_annual):
     """Per-event profitability, insolvency, and left-on-the-table -- one oracle read (at the
-    block just before the liquidation) plus one tx receipt, no hourly search. slip_fit: (a, b,
-    depth_cap) from this market's own DEX-slippage fit (build_report.py's slippage_fits), or
-    None if no DEX depth was found for this collateral at all -- DEX-side profitability is then
-    left out (not guessed), while the MM-side (config.LIQ_EDGE_MM_SPREAD_BPS) is always computed.
+    liquidation's own execution block, not the block before -- see the note below) plus one tx
+    receipt, no hourly search.
+
+    Review fix 1 decomposition: oracle_implied_bonus_usd (the LIF spread, valued at the market's
+    own oracle price -- used as the market-price proxy for BTC/ETH per the review's own offered
+    alternative to a separate Chainlink round, so oracle_market_basis_usd is 0 by construction,
+    not independently verified against a second feed) and gas_usd (block-level, see gas_cost_usd).
+
+    Review fix 2: the exit model (and therefore which cost is subtracted from the bonus) depends
+    on collateral_class/symbol -- see config.py's own LIQ_EDGE_HEDGE_COST_BPS /
+    LIQ_EDGE_REDEMPTION_COOLDOWN_DAYS / LIQ_EDGE_REDEMPTION_HAIRCUT_BPS docstrings for what each
+    model assumes. profit_dex_usd (the actual, Task-3-verified on-chain/aggregator DEX route) is
+    kept alongside the exit-model profit for BTC/ETH-family collateral only, as a second,
+    independently observed execution channel -- "MM" is gone entirely for everything else, per
+    the review ("remove MM P&L for collateral with no liquid perp hedge").
     Returns None if the execution-time oracle price can't be read at all.
     """
     # The block the liquidation actually executed in, not the block before: found by hand that
@@ -91,10 +127,10 @@ def event_economics(event, oracle_address, weth_prices, slip_fit):
     seized_value_usd = seized * price / mm.ORACLE_PRICE_SCALE / 1e6
     repaid_usd = repaid / 1e6
     bad_debt_usd = bad_debt / 1e6
-    gas_usd = gas_cost_usd(event["txHash"], event["timestamp"], weth_prices)
+    gas_usd = gas_cost_usd(event["txHash"], liq_block)
 
-    mm_proceeds = seized_value_usd * (1 - config.LIQ_EDGE_MM_SPREAD_BPS / 10_000)
-    profit_mm = (mm_proceeds - repaid_usd - gas_usd) if gas_usd is not None else None
+    oracle_implied_bonus_usd = seized_value_usd - repaid_usd
+    oracle_market_basis_usd = 0.0  # oracle used as the market-price proxy -- see docstring
 
     profit_dex = None
     if slip_fit is not None:
@@ -103,14 +139,74 @@ def event_economics(event, oracle_address, weth_prices, slip_fit):
         dex_proceeds = seized_value_usd * (1 - slip)
         profit_dex = (dex_proceeds - repaid_usd - gas_usd) if gas_usd is not None else None
 
+    exit_model, exit_cost_usd, exit_note = _exit_cost(
+        symbol, collateral_class, seized_value_usd, event["timestamp"], cost_of_capital_annual
+    )
+    profit_usd = None
+    if gas_usd is not None and exit_cost_usd is not None:
+        profit_usd = oracle_implied_bonus_usd - oracle_market_basis_usd - exit_cost_usd - gas_usd
+
     return {
         "seized_value_usd": seized_value_usd,
         "repaid_usd": repaid_usd,
         "bad_debt_usd": bad_debt_usd,
         "is_insolvent": bad_debt > 0,
+        "is_dust": repaid_usd < config.LIQ_EDGE_DUST_THRESHOLD_USD,
         "gas_usd": gas_usd,
-        "profit_mm_usd": profit_mm,
+        "oracle_implied_bonus_usd": oracle_implied_bonus_usd,
+        "oracle_market_basis_usd": oracle_market_basis_usd,
+        "exit_model": exit_model,
+        "exit_cost_usd": exit_cost_usd,
+        "exit_note": exit_note,
+        "profit_usd": profit_usd,
         "profit_dex_usd": profit_dex,
+    }
+
+
+def _exit_cost(symbol, collateral_class, seized_value_usd, event_timestamp, cost_of_capital_annual):
+    """Review fix 2's per-collateral-class exit model. Returns (exit_model_name, cost_usd_or_None,
+    note_or_None). cost=None means "not estimable" (never guessed), not zero.
+    """
+    if collateral_class in ("BTC", "ETH/LST"):
+        return "perp_hedge", seized_value_usd * config.LIQ_EDGE_HEDGE_COST_BPS / 10_000, None
+
+    if collateral_class == "PT (fixed maturity)":
+        maturity = parse_pt_maturity(symbol)
+        if maturity is None:
+            return "hold_to_maturity", None, "could not parse maturity date from symbol"
+        event_date = dt.datetime.fromtimestamp(event_timestamp, tz=dt.timezone.utc).date()
+        days_to_maturity = max(0, (maturity - event_date).days)
+        carry_cost = seized_value_usd * cost_of_capital_annual * (days_to_maturity / 365)
+        return "hold_to_maturity", carry_cost, f"{days_to_maturity}d carry to maturity {maturity.isoformat()}"
+
+    if symbol in config.LIQ_EDGE_REDEMPTION_COOLDOWN_DAYS:
+        cooldown_days = config.LIQ_EDGE_REDEMPTION_COOLDOWN_DAYS[symbol]
+        haircut_bps = config.LIQ_EDGE_REDEMPTION_HAIRCUT_BPS[symbol]
+        if cooldown_days is None or haircut_bps is None:
+            return "issuer_redemption", None, "redemption cooldown/fee not verified -- see config.py"
+        cost = seized_value_usd * (haircut_bps / 10_000 + cost_of_capital_annual * (cooldown_days / 365))
+        return "issuer_redemption", cost, None
+
+    return "none", None, "no verified exit model for this collateral"
+
+
+def profitability_stats(economics_list):
+    """Review fix 1: profitable share by COUNT and by USD VOLUME (volume-weighted by repaid_usd),
+    over non-dust events with a computed profit only -- dust is reported separately (count +
+    volume), never silently folded into the headline share."""
+    valid = [e for e in economics_list if e is not None]
+    dust = [e for e in valid if e["is_dust"]]
+    real = [e for e in valid if not e["is_dust"] and e["profit_usd"] is not None]
+    n_real = len(real)
+    volume = sum(e["repaid_usd"] for e in real)
+    profitable_volume = sum(e["repaid_usd"] for e in real if e["profit_usd"] > 0)
+    return {
+        "n_dust": len(dust),
+        "dust_volume_usd": sum(e["repaid_usd"] for e in dust),
+        "n_priced": n_real,
+        "profitable_share_count": (sum(1 for e in real if e["profit_usd"] > 0) / n_real) if n_real else None,
+        "profitable_share_volume": (profitable_volume / volume) if volume > 0 else None,
+        "total_volume_usd": volume,
     }
 
 
@@ -163,8 +259,8 @@ def delay_to_liquidation_hours(oracle_address, breakeven_px, liq_block, max_hour
     oracle price at h=0 must be the one Morpho's own liquidate() call actually saw.
     See _search_delay_hours. max_retries=3 here (not oracle.read_price's default 12): a
     missed probe in this bulk, exploratory search just reads as "no breach at this hour", which
-    this project accepts as a labeled limitation (config.py) in exchange for ~900 fewer retries
-    across a 230-event sample -- a single critical number elsewhere in this project still gets
+    this project accepts as a labeled limitation (config.py) in exchange for far fewer retries
+    across a 230+-event sample -- a single critical number elsewhere in this project still gets
     the full 12 retries (e.g. load_market's own oracle.read_price calls)."""
     max_hours = max_hours if max_hours is not None else config.LIQ_EDGE_MAX_DELAY_HOURS
     blocks_per_hour = blocks_per_hour if blocks_per_hour is not None else config.LIQ_EDGE_BLOCKS_PER_HOUR
@@ -178,19 +274,57 @@ def delay_to_liquidation_hours(oracle_address, breakeven_px, liq_block, max_hour
     return _search_delay_hours(price_at_hours_back, max_hours, breakeven_px)
 
 
-def walk_away_breakpoint(economics_list, multipliers=(1, 1.5, 2, 3, 5, 8, 13, 21, 34)):
-    """Smallest gas-cost multiplier at which at most half of this collateral's real historical
-    events remain profitable (DEX side preferred, MM as fallback per event) -- a sensitivity
-    swept over the ALREADY-observed real seized/repaid/gas numbers, not a new shock scenario.
-    profit' = proceeds - repaid - gas*m = (profit + gas) - gas*m, so no need to recompute
-    proceeds/repaid for each multiplier. Returns None if profitability can't be computed for any
-    event (no gas data) or never drops to <=50% within the swept range.
+def delay_to_liquidation_hours_extended(oracle_address, breakeven_px, liq_block, blocks_per_hour=None):
+    """Review fix 4: a cheap search first (config.LIQ_EDGE_MAX_DELAY_HOURS); if that hits its
+    own bound (the breach predates it -- the common shape for a market that drifted into
+    insolvency via accrued interest rather than a price crash, e.g. AZND, RLP, USR, wstUSR),
+    retries once at config.LIQ_EDGE_MAX_DELAY_HOURS_EXTENDED (the full lookback window) instead
+    of reporting a number truncated by a search budget that was never meant to be a hard fact.
+    Still returns the extended bound itself (not an exact value) if even that doesn't find the
+    breach -- still a lower bound, just a much less likely one to bind in practice.
     """
-    base = [
-        (e["profit_dex_usd"] if e["profit_dex_usd"] is not None else e["profit_mm_usd"], e["gas_usd"])
-        for e in economics_list
-        if e["gas_usd"] is not None and (e["profit_dex_usd"] is not None or e["profit_mm_usd"] is not None)
-    ]
+    cheap = delay_to_liquidation_hours(oracle_address, breakeven_px, liq_block, max_hours=config.LIQ_EDGE_MAX_DELAY_HOURS, blocks_per_hour=blocks_per_hour)
+    if cheap != config.LIQ_EDGE_MAX_DELAY_HOURS:
+        return cheap
+    return delay_to_liquidation_hours(
+        oracle_address, breakeven_px, liq_block, max_hours=config.LIQ_EDGE_MAX_DELAY_HOURS_EXTENDED, blocks_per_hour=blocks_per_hour
+    )
+
+
+def decompose_hf_decline(collateral, lltv_raw, debt_breach, debt_exec, price_breach, price_exec):
+    """Review fix 4: approximate attribution of the HF decline from breach (HF ~= 1.0 there, by
+    definition -- that's what "breach" means) to execution, into price-driven vs interest-
+    driven, by holding one side fixed at a time. These two figures don't exactly sum to the
+    total decline (there's a cross term) -- a standard, approximate attribution, labeled as
+    such, not an exact decomposition. collateral is assumed unchanged over the window (no
+    SupplyCollateral/WithdrawCollateral during the delay) -- a labeled simplification.
+    """
+    hf_if_only_interest_grew = mm.max_borrow(collateral, price_breach, lltv_raw) / debt_exec if debt_exec else None
+    hf_if_only_price_moved = mm.max_borrow(collateral, price_exec, lltv_raw) / debt_breach if debt_breach else None
+    interest_driven_decline = (1.0 - hf_if_only_interest_grew) if hf_if_only_interest_grew is not None else None
+    price_driven_decline = (1.0 - hf_if_only_price_moved) if hf_if_only_price_moved is not None else None
+    label = None
+    if interest_driven_decline is not None and price_driven_decline is not None:
+        label = "interest-driven" if interest_driven_decline > price_driven_decline else "price-driven"
+    return {
+        "interest_driven_decline": interest_driven_decline,
+        "price_driven_decline": price_driven_decline,
+        "label": label,
+        "debt_growth_from_interest_usd": (debt_exec - debt_breach) / 1e6,
+        "price_change_pct": (price_exec / price_breach - 1) if price_breach else None,
+    }
+
+
+def walk_away_breakpoint(economics_list, multipliers=(1, 1.5, 2, 3, 5, 8, 13, 21, 34)):
+    """Observed sensitivity (review fix 5: labeled as such, distinct from the stress engine's
+    modeled breakpoint_shock): smallest gas-cost multiplier at which at most half of this
+    collateral's real historical events remain profitable, swept over the ALREADY-observed real
+    numbers (profit_usd, gas_usd), not a new shock scenario. profit' = proceeds - repaid - gas*m
+    = (profit + gas) - gas*m, so no need to recompute proceeds/repaid for each multiplier.
+    Returns None if profitability can't be computed for any event (no gas/exit-cost data) or
+    never drops to <=50% within the swept range.
+    """
+    base = [(e["profit_usd"], e["gas_usd"]) for e in economics_list if e["gas_usd"] is not None and e["profit_usd"] is not None]
     if not base:
         return None
     for m in multipliers:
@@ -205,17 +339,15 @@ def summarize_market(events, economics_list, delay_samples):
     see build_liq_edge.py for how they're assembled. None entries (a failed oracle read for
     that specific event) are dropped, not treated as zero."""
     valid = [e for e in economics_list if e is not None]
-    with_dex = [e for e in valid if e["profit_dex_usd"] is not None]
-    with_mm = [e for e in valid if e["profit_mm_usd"] is not None]
     valid_delays = sorted(d for d in delay_samples if d is not None)
+    stats = profitability_stats(valid)
     return {
         "n_events": len(events),
         "n_insolvent": sum(1 for e in valid if e["is_insolvent"]),
-        "profitable_share_dex": (sum(1 for e in with_dex if e["profit_dex_usd"] > 0) / len(with_dex)) if with_dex else None,
-        "profitable_share_mm": (sum(1 for e in with_mm if e["profit_mm_usd"] > 0) / len(with_mm)) if with_mm else None,
+        **stats,
         "total_left_on_table_usd": sum(e["bad_debt_usd"] for e in valid),
         "median_delay_hours": statistics.median(valid_delays) if valid_delays else None,
         "n_delay_sampled": len(delay_samples),
         "n_delay_found": len(valid_delays),
-        "walk_away_gas_multiplier": walk_away_breakpoint(valid),
+        "walk_away_gas_multiplier_observed": walk_away_breakpoint(valid),
     }
