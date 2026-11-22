@@ -1,0 +1,183 @@
+{
+  "window_start_day": 1747958400,
+  "window_end_day": 1795219200,
+  "n_markets": 76,
+  "spot_checks": [
+    {
+      "market": "AZND",
+      "date": 1783382400,
+      "block": 25476943,
+      "api_utilization": 1,
+      "onchain_utilization": 1.0,
+      "diff": 0.0
+    },
+    {
+      "market": "PT-USD3-17DEC2026",
+      "date": 1783382400,
+      "block": 25476943,
+      "api_utilization": 0.9803082291068067,
+      "onchain_utilization": 0.9803076007681436,
+      "diff": 6.283386631000809e-07
+    },
+    {
+      "market": "etrUSD",
+      "date": 1795219200,
+      "block": 26459750,
+      "api_utilization": 0.7416114070985593,
+      "onchain_utilization": 0.7415674325303276,
+      "diff": 4.3974568231686106e-05
+    },
+    {
+      "market": "ssftUSD",
+      "date": 1795219200,
+      "block": 26459750,
+      "api_utilization": 0.9043688572400816,
+      "onchain_utilization": 0.9043499360785929,
+      "diff": 1.8921161488716365e-05
+    },
+    {
+      "market": "AZND",
+      "date": 1795219200,
+      "block": 26459750,
+      "api_utilization": 1,
+      "onchain_utilization": 1.0,
+      "diff": 0.0
+    },
+    {
+      "market": "PT-USD3-17DEC2026",
+      "date": 1795219200,
+      "block": 26459750,
+      "api_utilization": 0.8938568290710469,
+      "onchain_utilization": 0.8938564844443405,
+      "diff": 3.4462670639445747e-07
+    },
+    {
+      "market": "PT-strUSD-26NOV2026",
+      "date": 1795219200,
+      "block": 26459750,
+      "api_utilization": 0.7148139742293226,
+      "onchain_utilization": 0.7147673018101658,
+      "diff": 4.667241915679021e-05
+    }
+  ],
+  "table": {
+    "BENCH": {
+      "ann_return": 0.037296753053440934,
+      "ann_vol": 0.0006337211104201387,
+      "sharpe_vs_bench": null,
+      "max_drawdown": 0.0,
+      "days_trapped": 0,
+      "usd_trapped_at_end": 0.0,
+      "n_switches": 0,
+      "final_equity_reported": 10565900.112421969,
+      "final_equity_marked": 10565900.112421969
+    },
+    "NAIVE": {
+      "ann_return": 20.09753195831407,
+      "ann_vol": 0.13414307269135448,
+      "sharpe_vs_bench": 22.650869599449578,
+      "max_drawdown": 0.0,
+      "days_trapped": 541,
+      "usd_trapped_at_end": 939847161.8397179,
+      "n_switches": 274,
+      "final_equity_reported": 970040387.0198437,
+      "final_equity_marked": 1292.8346045006551
+    },
+    "RISK_AWARE": {
+      "ann_return": 0.08070469566250194,
+      "ann_vol": 0.0073980027644465094,
+      "sharpe_vs_bench": 5.57973179390524,
+      "max_drawdown": -2.3356119314366097e-05,
+      "days_trapped": 492,
+      "usd_trapped_at_end": 5138005.055708364,
+      "n_switches": 403,
+      "final_equity_reported": 11234693.684848372,
+      "final_equity_marked": 8111093.768914973,
+      "exclusions": {
+        "oracle_class_excluded": 13,
+        "no_dex_exit_excluded": 49,
+        "ever_zombie_excluded": 15
+      }
+    },
+    "REL_VALUE": {
+      "ann_return": 0.08872846147542801,
+      "ann_vol": 0.007851800045968254,
+      "sharpe_vs_bench": 6.213693608083226,
+      "max_drawdown": -3.70898992632096e-05,
+      "days_trapped": 450,
+      "usd_trapped_at_end": 2369059.189825727,
+      "n_switches": 601,
+      "final_equity_reported": 11359959.91763824,
+      "final_equity_marked": 9020380.19291399,
+      "exclusions": {
+        "oracle_class_excluded": 13,
+        "no_dex_exit_excluded": 49,
+        "ever_zombie_excluded": 15
+      }
+    }
+  },
+  "bucket_gap_summary": {
+    "('cbBTC', 'MARKET', 0.86)": {
+      "n_gaps_logged": 21,
+      "n_switched": 11
+    },
+    "('wstETH', 'MARKET', 0.86)": {
+      "n_gaps_logged": 10,
+      "n_switched": 1
+    },
+    "('weETH', 'MARKET', 0.86)": {
+      "n_gaps_logged": 11,
+      "n_switched": 2
+    }
+  },
+  "rel_value_pnl_captured_vs_risk_aware_reported_usd": 125266.23278986849,
+  "rel_value_pnl_captured_vs_risk_aware_marked_usd": 909286.4239990171,
+  "sensitivity": {
+    "K": {
+      "3": {
+        "ann_return": 20.742346651891197,
+        "final_equity": 1014870847.0673969
+      },
+      "5": {
+        "ann_return": 20.09753195831407,
+        "final_equity": 970040387.0198437
+      },
+      "10": {
+        "ann_return": 19.3876610845665,
+        "final_equity": 921462147.1589426
+      }
+    },
+    "rebalance_days": {
+      "1": {
+        "ann_return": 20.112922408408114,
+        "final_equity": 971102275.8643775,
+        "n_switches": 1614
+      },
+      "7": {
+        "ann_return": 20.09753195831407,
+        "final_equity": 970040387.0198437,
+        "n_switches": 274
+      }
+    },
+    "switch_threshold_bps": {
+      "10": {
+        "ann_return": 0.08860862201027642,
+        "final_equity": 11358083.90629915,
+        "n_switches": 629
+      },
+      "25": {
+        "ann_return": 0.08872846147542801,
+        "final_equity": 11359959.91763824,
+        "n_switches": 601
+      },
+      "50": {
+        "ann_return": 0.08888309752779855,
+        "final_equity": 11362380.800309855,
+        "n_switches": 551
+      }
+    }
+  },
+  "figures": [
+    "reports\\figures\\fig11_backtest_equity_curves.png"
+  ]
+}

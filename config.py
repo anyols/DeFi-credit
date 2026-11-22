@@ -150,3 +150,36 @@ LIQ_EDGE_COST_OF_CAPITAL_ANNUAL_FALLBACK = 0.05
 # computed as a plain 1-day return. 0.5 days catches that gap (and DefiLlama's own per-day
 # timestamp jitter, generally well under an hour, passes easily).
 PRICE_GAP_TOLERANCE_DAYS = 0.5
+
+# Task 6 (new module, backtest.py): lending strategies across Morpho Ethereum USDC markets.
+BACKTEST_LOOKBACK_DAYS = 548  # ~18 months
+BACKTEST_AUM_USD = 10_000_000
+# Universe inclusion bar: CURRENT supplyAssetsUsd, not a true "existed at any point" scan.
+# Found by hand: Ethereum has 761 all-time USDC Morpho markets, of which 602 have under $1,000
+# of CURRENT supply (almost certainly abandoned/test markets) -- pulling full daily history for
+# all 761 is not a reasonable time budget. Using current supply as the inclusion proxy still
+# captures every later zombie and any Stream-style collapse that left meaningful residual state
+# (which all five of this project's own classified zombies do, at $36M-$770M each), but carries
+# a real, labeled residual survivorship-bias risk: a market that fully drained to near-zero
+# after a total loss would be excluded here.
+BACKTEST_MIN_SUPPLY_USD = 500_000
+BACKTEST_REBALANCE_DAYS = 7  # weekly
+BACKTEST_TOP_K = 5
+BACKTEST_GAS_COST_USD = 50  # same flat assumption as stress.py's own gas_cost_loan_units
+# RISK_AWARE/REL_VALUE's rolling zombie filter: >=99% utilization for >=14 of the trailing 30
+# days, evaluated point-in-time (only data up to and including the rebalance date), unlike
+# spread.classify_zombie's own 30d/30d thresholds (tuned for "is this stuck right now",
+# not "would this have been excluded on this specific past date").
+BACKTEST_ZOMBIE_UTIL_THRESHOLD = 0.99
+BACKTEST_ZOMBIE_LOOKBACK_DAYS = 30
+BACKTEST_ZOMBIE_MIN_DAYS_AT_CAP = 14
+BACKTEST_SWITCH_THRESHOLD_BPS = 25
+BACKTEST_LLTV_BUCKET_TOLERANCE = 0.02  # 2 percentage points, as a fraction
+# "No DEX exit route" is checked ONCE per market at a representative size, using TODAY's depth
+# (dex.best_route + the aggregator) -- a mild look-ahead flagged explicitly here and in the
+# memo, since re-quoting historical DEX depth at every rebalance date for ~80 markets over 548
+# days is not a reasonable time budget, and Task 3's own machinery only works at a live block.
+BACKTEST_DEX_CHECK_SIZE_USD = 100_000
+BACKTEST_SENSITIVITY_K = (3, 5, 10)
+BACKTEST_SENSITIVITY_SWITCH_BPS = (10, 25, 50)
+BACKTEST_SENSITIVITY_REBALANCE_DAYS = (1, 7)

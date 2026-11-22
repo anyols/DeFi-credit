@@ -212,7 +212,7 @@ def usdc_market_universe(min_supply_usd=1_000_000, chain_id=1, first=300):
     query($loan: [String!], $chainIds: [Int!], $minSupply: Float, $first: Int) {
       markets(first: $first, where: { loanAssetAddress_in: $loan, chainId_in: $chainIds, supplyAssetsUsd_gte: $minSupply }) {
         items {
-          marketId lltv
+          marketId lltv creationBlockNumber
           loanAsset { symbol decimals address }
           collateralAsset { symbol address decimals }
           oracle { address }

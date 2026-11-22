@@ -237,3 +237,28 @@ def plot_zombie_markets(zombies, zombie_supply_usd_total, healthy_supply_usd_tot
     ax2.set_title("Share of top-15 USDC markets' supply")
     fig.suptitle("Zombie markets: reported supply that isn't actively managed")
     return _save(fig, name)
+
+
+def plot_backtest_equity_curves(curves, name="fig11_backtest_equity_curves.png"):
+    """Task 6. curves: {label: [(day, equity), ...]} -- BENCH, NAIVE (reported), NAIVE (marked),
+    RISK_AWARE, REL_VALUE, all starting from the same AUM (config.BACKTEST_AUM_USD)."""
+    import datetime as dt
+
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    styles = {
+        "NAIVE (marked)": {"linestyle": "--"},
+    }
+    for label, points in curves.items():
+        xs = [dt.datetime.utcfromtimestamp(d) for d, _ in points]
+        ys = [v for _d, v in points]
+        ax.plot(xs, ys, label=label, **styles.get(label, {}))
+    # Log scale: NAIVE's reported curve (illusory, zombie-rate compounding) and its own marked
+    # curve (near-total loss) span nearly 6 orders of magnitude from the same $10M start -- a
+    # linear axis would flatten BENCH/RISK_AWARE/REL_VALUE to an indistinguishable line near zero.
+    ax.set_yscale("log")
+    ax.set_ylabel("Equity (USD, log scale)")
+    ax.set_title("Lending strategy backtest: equity curves")
+    ax.legend(fontsize=8)
+    ax.grid(alpha=0.3, which="both")
+    fig.autofmt_xdate()
+    return _save(fig, name)
