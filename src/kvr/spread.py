@@ -1,5 +1,6 @@
 """M10: spread decomposition, per market and across the wider USDC-market cross-section."""
 
+import datetime as dt
 import time
 
 import numpy as np
@@ -150,6 +151,44 @@ def classify_zombie(market_id, before_timestamp, chain_id=1):
         "days_stuck_is_lower_bound": days_stuck_is_lower_bound,
         "last_repay_timestamp": last_repay["timestamp"] if last_repay else None,
         "days_since_repay": days_since_repay,
+    }
+
+
+def zombie_principal(market_id, before_timestamp, chain_id=1, max_lookback_days=400):
+    """Memo review: a zombie market's reported totalSupplyAssets (what build_report.py sums into
+    "zombie supply") is NOT the same thing as what lenders actually put in -- ~800%/yr accrues
+    continuously on debt nobody repays, inflating the supply-side balance lenders are owed well
+    past their real deposits. Decomposes it into net lender principal (sum(Supply) - sum(Withdraw)
+    from real transfer events, in USD) and the remainder (accrued interest), plus the borrowed
+    amount as of the FIRST day utilization crossed the zombie threshold -- the same historical
+    series classify_zombie's own days_stuck already walks, read at that specific point instead of
+    only counting days.
+    """
+    since_floor = before_timestamp - config.ZOMBIE_PRINCIPAL_LOOKBACK_DAYS * 86400
+    supplies = api.get_market_transfers_chunked(market_id, "Supply", since_floor, before_timestamp)
+    withdraws = api.get_market_transfers_chunked(market_id, "Withdraw", since_floor, before_timestamp)
+    sum_supplied = sum(int(t["data"]["assets"]) for t in supplies if t.get("data"))
+    sum_withdrawn = sum(int(t["data"]["assets"]) for t in withdraws if t.get("data"))
+    net_principal = sum_supplied - sum_withdrawn
+
+    days_stuck, is_lower_bound = consecutive_days_at_utilization_cap(market_id, chain_id, max_lookback_days=max_lookback_days)
+    util_points = _historical_series(market_id, "utilization", chain_id, max_lookback_days)
+    borrow_points = _historical_series(market_id, "borrowAssetsUsd", chain_id, max_lookback_days)
+    stuck_since_date, borrow_usd_at_stuck_date = None, None
+    if 0 < days_stuck <= len(util_points):
+        stuck_ts = util_points[len(util_points) - days_stuck][0]
+        stuck_since_date = dt.datetime.fromtimestamp(stuck_ts, tz=dt.timezone.utc).date().isoformat()
+        if borrow_points:
+            borrow_usd_at_stuck_date = min(borrow_points, key=lambda p: abs(p[0] - stuck_ts))[1]
+
+    return {
+        "sum_supplied_usd": sum_supplied / 1e6,
+        "sum_withdrawn_usd": sum_withdrawn / 1e6,
+        "net_principal_usd": net_principal / 1e6,
+        "days_stuck": days_stuck,
+        "days_stuck_is_lower_bound": is_lower_bound,
+        "stuck_since_date": stuck_since_date,
+        "borrow_usd_at_stuck_date": borrow_usd_at_stuck_date,
     }
 
 

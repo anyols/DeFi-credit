@@ -1,8 +1,13 @@
 # Where DeFi lending risk actually sits: not where prices move, but where nobody can sell
 
 Snapshot: block 26,465,719 (Ethereum mainnet). Universe: top 15 USDC Morpho Blue markets by
-supply (`config.TOP_N_MARKETS`, `config.MIN_SUPPLY_USD=$5M`). Liquidation data: last 24 months
-(`config.LIQ_EDGE_LOOKBACK_DAYS=730`), 886 real `Liquidate` events across the universe.
+supply (`config.TOP_N_MARKETS`, `config.MIN_SUPPLY_USD=$5M`), of which 5 are zombies -- tracked
+in their own section below, not treated as live markets for any yield/risk comparison. The next 5
+non-zombie, non-broken-oracle markets by supply (ranks 16-20: PT-USD3-17DEC2026, steakEURCV,
+PRIME, weETH, dCOMP) are referenced where relevant; their own 24-month liquidation activity is
+negligible (0, 1, 0, 1, 3 events respectively) and changes none of the numbers below. Liquidation
+data: last 24 months (`config.LIQ_EDGE_LOOKBACK_DAYS=730`), 886 real `Liquidate` events across
+the original 15-market set.
 
 ## TL;DR
 
@@ -10,19 +15,20 @@ supply (`config.TOP_N_MARKETS`, `config.MIN_SUPPLY_USD=$5M`). Liquidation data: 
    liquidated profitably** (WBTC 99.3%, cbBTC 97.4%, wstETH 99.6% -- `liq_edge.profitability_stats`,
    volume-weighted, dust excluded), **median delay < 1 hour.** Liquidation works here; no edge
    for anyone.
-2. **Collateral with no DEX exit (RLP, USR, wstUSR, PT notes, AZND): 5 of the 15 largest USDC
-   markets are zombies** (`spread.classify_zombie`: >=99% utilization for 30d+, no Repay in
-   30d+), pinned at a measured ~800% APR (`spread.onchain_supply_apr`, read from the on-chain
-   IRM, not assumed), holding **$1.22B of reported supply -- 62% of this universe's total**. The
-   delay-to-liquidation figures this project first computed for these markets did not survive a
-   direct health-factor check (see Findings) and are excluded here. What's verified: the RLP
-   market crystallized **$1.18M of bad debt** from a position that was already ~38% underwater
-   before anyone could act, because RLP has zero DEX depth at any size or fee tier (`dex.best_route`).
+2. **$9.0M of real lender principal is stuck in the 5 zombie markets** (RLP, USR, wstUSR, PT-RLP,
+   AZND); reported supply shows **$1.22B** because ~800% APR (`spread.onchain_supply_apr`,
+   measured from the on-chain IRM) accrues continuously on debt nobody repays -- **$1.21B of that
+   $1.22B (99.3%) is accrued interest, not deposits** (`spread.zombie_principal`: net principal =
+   sum(Supply) - sum(Withdraw) from every real transfer event). The delay-to-liquidation figures
+   this project first computed for these markets did not survive a direct health-factor check
+   (see Findings) and are excluded here. What's verified: the RLP market crystallized **$1.18M of
+   bad debt** from a position that was already ~38% underwater before anyone could act, because
+   RLP has zero DEX depth at any size or fee tier (`dex.best_route`).
 3. **The model flags these structurally in advance**, before any loss prints: oracle class, DEX
    depth, and borrower concentration are all computable from indexed state alone, no stress run
    needed -- the same two checks (oracle class + concentration) flagged Stream/xUSD before its
-   Nov 2025 collapse (see Backtest). The edge in markets like RLP/USR belongs to whoever can exit
-   through issuer redemption, not to whoever hedges best -- and this project could not verify that
+   Nov 2025 collapse (see Backtest). In markets like RLP/USR the only exit is the issuer, so the
+   risk is the issuer, not the collateral price -- and this project could not verify that
    redemption is actually available on reasonable terms for most of them (see Limitations).
 
 ## Findings
@@ -53,9 +59,31 @@ classified zombies, their measured on-chain borrow rate is pinned at ~800% APR
 (`spread.onchain_supply_apr`), and none has any Uniswap V3 or aggregator depth at any size
 (`dex.best_route`, `dex.aggregator_quote_curve` -- both exhausted, zero result).
 
-**Zombie markets (fig 10):** 5 of 15 markets, $1.22B of this universe's $1.97B reported supply
-(62%) sits at >=99% utilization with no Repay event in 30+ days. This capital is not withdrawable
-in practice and is not being actively managed by its borrowers.
+**Zombie markets, principal vs accrued interest (fig 10):** 5 of 15 markets sit at >=99%
+utilization with no Repay event in 30+ days, reporting $1.22B of supply combined (62% of this
+universe's $1.97B). Decomposed per market (`spread.zombie_principal`) into net principal
+(sum(Supply) - sum(Withdraw), USD, from every real transfer event) and accrued interest (the
+remainder):
+
+| Market | Reported supply | Net principal | Accrued interest | Debt when it got stuck | Stuck since |
+|---|---|---|---|---|---|
+| wstUSR | $770.4M | $5.86M | $764.5M | $6.23M | 2026-03-23 |
+| RLP | $255.7M | -$2.96M | $258.7M | $2.64M | 2026-03-23 |
+| AZND | $109.9M | $7.35M | $102.5M | $8.23M | 2026-06-23 |
+| PT-RLP-9APR2026 | $49.8M | $0.42M | $49.4M | $0.48M | 2026-03-23 |
+| USR | $36.6M | -$1.63M | $38.2M | $0.28M | 2026-03-23 |
+| **Total** | **$1,222.4M** | **$9.0M** | **$1,213.4M** | | |
+
+RLP and USR show *negative* net principal -- not negative real money, but a limitation of the
+cash-flow formula itself: a Withdraw event's `assets` already includes whatever interest accrued
+on that lender's shares, while a Supply event is principal-only, so a market with enough
+historical turnover (RLP: $17.86B of gross Supply+Withdraw flow against $255.7M of current
+supply) can show withdrawals nominally exceeding deposits even though the market plainly still
+holds real value. Reported literally, not clamped to zero, because hiding it would be its own
+kind of invented number. "Debt when it got stuck" is each market's `borrowAssetsUsd` on the
+first day its utilization crossed 99% -- $0.28M to $8.23M across the five, one to two orders of
+magnitude below today's reported supply in every case; nearly all of that growth happened after
+the market was already stuck, as accrued interest with no real economic activity behind it.
 
 **RLP case study.** On 2026-05-25, a liquidation seized ~630,000 RLP and repaid $776,865.78 of
 debt -- but the position was already ~38% underwater at that moment (collateral worth ~$810,925
@@ -95,6 +123,11 @@ Every named assumption lives in `config.py`, with its reasoning in the comment n
   Morpho's own Taylor-series interest accrual over 400+ untouched days on a near-ceiling rate).
 - `ZOMBIE_UTIL_THRESHOLD/ZOMBIE_MIN_DAYS_STUCK/ZOMBIE_MIN_DAYS_SINCE_REPAY` -- the zombie
   classifier's own thresholds (99% utilization, 30 days, 30 days).
+- `ZOMBIE_PRINCIPAL_LOOKBACK_DAYS=3yr` -- how far back the principal decomposition pulls
+  Supply/Withdraw history; comfortably covers Morpho Blue's full history for every market here.
+  The net-principal formula itself (sum(Supply)-sum(Withdraw)) goes negative for RLP and USR --
+  a real limitation of subtracting principal-only inflows from interest-inclusive outflows on a
+  market with heavy historical turnover, not a sign of negative real money (see Findings).
 - `UNDERLYING_SHOCK_RANGE/DEPEG_SHOCK_RANGE/DEPTH_STRESS_KAPPA/PATH_STEPS` -- the M8 stress grid;
   `kappa` (depth-under-stress multiplier) is an assumption, not a measurement.
 - **The modeled walk-away shock is -10% for every market with a breakpoint (WBTC, cbBTC, wstETH,
@@ -118,11 +151,15 @@ Every named assumption lives in `config.py`, with its reasoning in the comment n
   cooldown and fee are **not estimable**, confirmed by web research, not computed from a guess:
   RLP/USR (Resolv) gate redemption on a 110% collateralization ratio, not a time window; wstUSR
   was the collateral an attacker used to extract ~$25M from Morpho markets in Resolv's 2026-03-22
-  exploit (a compromised signing key, confirmed via Chainalysis, Rekt.news, The Block, and
-  Cointelegraph) -- Resolv states the collateral pool remains fully backed, but this project could
-  not independently verify ordinary-holder redemption terms for wstUSR in that period; apyUSD has
-  a real but unquantified on-chain unlock delay. Only fxSAVE's own primary-source docs support
-  near-instant redemption (`cooldown=0`, used with low confidence).
+  exploit (a compromised signing key, not a contract flaw), confirmed independently via:
+  [Chainalysis](https://www.chainalysis.com/blog/lessons-from-the-resolv-hack/),
+  [Rekt.news](https://rekt.news/resolv-labs-rekt),
+  [The Block](https://www.theblock.co/post/394582/resolvs-usr-stablecoin-depegs-after-attacker-mints-80-million-unbacked-tokens-extracts-roughly-25-million),
+  [Cointelegraph](https://cointelegraph.com/news/resolv-protocol-temporarily-halted-80m-exploit) --
+  Resolv states the collateral pool remains fully backed, but this project could not independently
+  verify ordinary-holder redemption terms for wstUSR in that period; apyUSD has a real but
+  unquantified on-chain unlock delay. Only fxSAVE's own primary-source docs support near-instant
+  redemption (`cooldown=0`, used with low confidence).
 - `LIQ_EDGE_COST_OF_CAPITAL_ANNUAL_FALLBACK=5%` -- used only if the live Aave USDC rate read
   fails; the real run used the live rate (3.88%, `spread.aave_usdc_supply_rate_90d_avg`).
 - No smart-contract risk, no USDC depeg (assumed at par throughout), gas receipts and the ETH/USD

@@ -193,3 +193,56 @@ def get_last_transaction(market_unique_key, tx_type, before_timestamp=None):
     """
     items = _paginate(query, {"id": market_unique_key, **variables}, "marketTransactions")
     return max(items, key=lambda t: t["timestamp"]) if items else None
+
+
+def get_market_transfers(market_unique_key, tx_type, before_timestamp=None, since_timestamp=None):
+    """All Supply/Withdraw/Borrow/Repay transactions for a market (type_in: [tx_type]), with
+    their assets/shares -- MarketTransactionTransferData, the same union member all four share
+    (verified by schema introspection). Used by spread.zombie_principal to separate a zombie
+    market's real lender principal from accrued interest. Most callers want
+    get_market_transfers_chunked instead -- a sufficiently active market has more events than
+    the API's own skip<=10000 pagination ceiling allows in one unbounded call (found by hand on
+    RLP: over 10,000 Supply/Withdraw events).
+    """
+    var_decls, wheres, variables = [], [], {}
+    if before_timestamp is not None:
+        var_decls.append("$beforeTs: Int")
+        wheres.append("timestamp_lte: $beforeTs")
+        variables["beforeTs"] = before_timestamp
+    if since_timestamp is not None:
+        var_decls.append("$sinceTs: Int")
+        wheres.append("timestamp_gte: $sinceTs")
+        variables["sinceTs"] = since_timestamp
+    var_decl = "".join(d + ", " for d in var_decls)
+    where = "".join(", " + w for w in wheres)
+    query = f"""
+    query($id: String!, {var_decl} $first: Int, $skip: Int) {{
+      marketTransactions(first: $first, skip: $skip,
+                          where: {{ marketUniqueKey_in: [$id], type_in: [{tx_type}]{where} }}) {{
+        items {{
+          txHash timestamp blockNumber
+          data {{ ... on MarketTransactionTransferData {{ assets shares }} }}
+        }}
+        pageInfo {{ countTotal }}
+      }}
+    }}
+    """
+    return _paginate(query, {"id": market_unique_key, **variables}, "marketTransactions")
+
+
+def get_market_transfers_chunked(market_unique_key, tx_type, since_timestamp, before_timestamp):
+    """Same as get_market_transfers, but bisects the [since_timestamp, before_timestamp] window
+    on hitting the API's skip<=10000 pagination ceiling, so a market with more events than that
+    ceiling allows (confirmed on RLP) still gets a complete, not truncated, result.
+    """
+    try:
+        return get_market_transfers(market_unique_key, tx_type, before_timestamp=before_timestamp, since_timestamp=since_timestamp)
+    except RuntimeError as e:
+        if "skip must not be greater than" not in str(e):
+            raise
+        mid_ts = (since_timestamp + before_timestamp) // 2
+        if mid_ts <= since_timestamp or mid_ts >= before_timestamp:
+            raise  # window can't be split further (sub-second range) -- a genuine API limit, not a bug to paper over
+        return get_market_transfers_chunked(market_unique_key, tx_type, since_timestamp, mid_ts) + get_market_transfers_chunked(
+            market_unique_key, tx_type, mid_ts + 1, before_timestamp
+        )
