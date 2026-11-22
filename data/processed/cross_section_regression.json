@@ -1,0 +1,31 @@
+{
+  "full_sample": {
+    "coefficients": {
+      "intercept": 26.706300746448218,
+      "illiq": 6563.290471708796,
+      "oracle=MARKET": 195.70603982365174,
+      "oracle=UNKNOWN": 32.09199587184207,
+      "collateral=ETH/LST": -143.57814454249456,
+      "collateral=PT (fixed maturity)": 107.1394362146898,
+      "collateral=RWA/other": -95.86154584650444,
+      "collateral=stable/yield-bearing": 11.557240255389388
+    },
+    "r_squared": 0.44101668405205985,
+    "n": 43
+  },
+  "btc_eth_subsample": {
+    "coefficients": {
+      "intercept": 74.59162569121115,
+      "el_bps": 4.3286263462505303e-11,
+      "illiq": 10752.13999701823,
+      "oracle=UNKNOWN": 109.82498416880885
+    },
+    "r_squared": 0.34264565830471494,
+    "n": 12
+  },
+  "n_total_universe": 66,
+  "n_used": 43,
+  "n_zombies_excluded": 7,
+  "zombie_supply_usd_total": 1255061589.3158615,
+  "n_broken_oracle_excluded": 7
+}

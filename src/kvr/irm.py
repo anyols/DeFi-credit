@@ -104,5 +104,19 @@ def borrow_rate(u, start_rate_at_target, elapsed):
 
 
 def apy_from_per_second_rate(rate):
-    """Float conversion for reporting only (ground rule: float for analytics, int for protocol)."""
+    """Float conversion for reporting only (ground rule: float for analytics, int for protocol).
+    Continuously-compounded APY -- for a market whose rate is pinned at the IRM's own ceiling
+    (sustained ~100% utilization), this blows up to a nonsensical multi-million-percent figure
+    (exp() of an already-extreme per-second rate held for a full year), which is a real
+    mathematical consequence, not a bug, but not a meaningful "yield" either -- see
+    apr_from_per_second_rate for the simple, non-compounded figure a zombie market should be
+    reported with instead.
+    """
     return math.exp(rate / WAD * SECONDS_PER_YEAR) - 1
+
+
+def apr_from_per_second_rate(rate):
+    """Simple (non-compounded) annualized rate: rate/WAD * SECONDS_PER_YEAR, no exp(). Doesn't
+    blow up for a pinned-rate market the way apy_from_per_second_rate does, because it never
+    pretends the instantaneous rate compounds continuously for a full year."""
+    return rate / WAD * SECONDS_PER_YEAR

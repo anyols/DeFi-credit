@@ -5,6 +5,7 @@ import time
 import numpy as np
 import requests
 
+import config
 from . import api, chain, el, irm, oracle
 
 ZERO_ADDRESS = "0x0000000000000000000000000000000000000000"
@@ -47,7 +48,27 @@ def _historical_series(market_id, field, chain_id=1, lookback_days=100):
     """
     data = api.graphql(q, {"id": market_id, "chainId": chain_id, "start": start, "end": now})
     points = data["marketById"]["historicalState"][field]
-    return [p["y"] for p in points if p["y"] is not None]
+    # Sorted ascending (oldest first) explicitly -- found by hand that the API actually returns
+    # these newest-first, which silently broke consecutive_days_at_utilization_cap's assumption
+    # that reversed(values) would walk from most-recent backward (it instead walked oldest-first,
+    # since the input was already newest-first) until this sort was added.
+    return sorted(((p["x"], p["y"]) for p in points if p["y"] is not None), key=lambda t: t[0])
+
+
+def _onchain_borrow_rate_and_utilization(market_id, block):
+    """(borrow_rate_per_second, utilization_wad, fee_wad) or None if idle/no supply."""
+    mid_bytes = bytes.fromhex(market_id[2:])
+    total_supply_assets, _tss, total_borrow_assets, _tbs, _lu, fee = chain.call_morpho("market", [mid_bytes], block)
+    if total_supply_assets == 0:
+        return None
+    params = chain.call_morpho("idToMarketParams", [mid_bytes], block)
+    irm_addr = params[3]
+    if irm_addr.lower() == ZERO_ADDRESS:
+        return None
+    (rate_at_target,) = chain.call(irm_addr, "rateAtTarget", [mid_bytes], block)
+    u = irm.utilization(total_borrow_assets, total_supply_assets)
+    borrow_rate_per_second, _end_rt = irm.borrow_rate(u, rate_at_target, 0)
+    return borrow_rate_per_second, u, fee
 
 
 def onchain_supply_apy(market_id, block):
@@ -57,27 +78,79 @@ def onchain_supply_apy(market_id, block):
     trusting the Morpho API's APY fields at all (T5 found monthlyApy/monthlySupplyApy simply
     wrong for a real market), so this replaces market_quarterly_supply_apy rather than
     supplementing it. Returns 0.0 for a market with no IRM (idle markets have no borrowing, so
-    no yield) or no supply at all.
+    no yield) or no supply at all. For a zombie market, prefer onchain_supply_apr instead (see
+    irm.apy_from_per_second_rate's docstring for why APY is the wrong figure there).
     """
-    mid_bytes = bytes.fromhex(market_id[2:])
-    total_supply_assets, _tss, total_borrow_assets, _tbs, _lu, fee = chain.call_morpho("market", [mid_bytes], block)
-    if total_supply_assets == 0:
+    result = _onchain_borrow_rate_and_utilization(market_id, block)
+    if result is None:
         return 0.0
-    params = chain.call_morpho("idToMarketParams", [mid_bytes], block)
-    irm_addr = params[3]
-    if irm_addr.lower() == ZERO_ADDRESS:
-        return 0.0
-    (rate_at_target,) = chain.call(irm_addr, "rateAtTarget", [mid_bytes], block)
-    u = irm.utilization(total_borrow_assets, total_supply_assets)
-    borrow_rate_per_second, _end_rt = irm.borrow_rate(u, rate_at_target, 0)
+    borrow_rate_per_second, u, fee = result
     borrow_apy = irm.apy_from_per_second_rate(borrow_rate_per_second)
     return borrow_apy * (u / 10**18) * (1 - fee / 10**18)
 
 
+def onchain_supply_apr(market_id, block):
+    """Simple (non-compounded) supply APR -- see irm.apr_from_per_second_rate. Use this, not
+    onchain_supply_apy, for a zombie market (Task 2 review point 3): APY's continuous
+    compounding of an already-extreme pinned rate produces a multi-million-percent figure that
+    isn't a real, earnable yield; APR just scales the per-second rate linearly and stays sane.
+    """
+    result = _onchain_borrow_rate_and_utilization(market_id, block)
+    if result is None:
+        return 0.0
+    borrow_rate_per_second, u, fee = result
+    borrow_apr = irm.apr_from_per_second_rate(borrow_rate_per_second)
+    return borrow_apr * (u / 10**18) * (1 - fee / 10**18)
+
+
 def utilization_time_at_cap(market_id, chain_id=1, threshold=0.99, lookback_days=90):
     """Fraction of daily observations over the lookback window with utilization >= threshold."""
-    values = _historical_series(market_id, "utilization", chain_id, lookback_days)
-    return sum(1 for v in values if v >= threshold) / len(values) if values else None
+    points = _historical_series(market_id, "utilization", chain_id, lookback_days)
+    return sum(1 for _ts, v in points if v >= threshold) / len(points) if points else None
+
+
+def consecutive_days_at_utilization_cap(market_id, chain_id=1, threshold=None, max_lookback_days=400):
+    """(days, is_lower_bound). days: walking backward from the most recent observation, how
+    long utilization has stayed >= threshold without a break; 0 if the most recent observation
+    is already below threshold. is_lower_bound=True means the entire max_lookback_days window
+    was at-cap -- the real streak could be longer, this just couldn't see further back. Found by
+    hand: a 180-day window reported exactly 181 for 4 of 5 pinned markets (a suspiciously
+    round, identical number across different markets), and a 400-day window showed their real
+    streak is 246 days -- so 181 was itself a lower bound, not a fact, and a caller that doesn't
+    check is_lower_bound would under-report days_stuck as if it were exact.
+    """
+    threshold = threshold if threshold is not None else config.ZOMBIE_UTIL_THRESHOLD
+    points = _historical_series(market_id, "utilization", chain_id, max_lookback_days)
+    days = 0
+    for _ts, v in reversed(points):  # points is ascending (oldest first) -- reversed walks newest first
+        if v < threshold:
+            return days, False
+        days += 1
+    return days, (days == len(points) and days > 0)
+
+
+def classify_zombie(market_id, before_timestamp, chain_id=1):
+    """Task 2 review point 3: utilization >= config.ZOMBIE_UTIL_THRESHOLD for
+    >= config.ZOMBIE_MIN_DAYS_STUCK consecutive days, AND no Repay event in the last
+    config.ZOMBIE_MIN_DAYS_SINCE_REPAY days. Returns a dict with the fields the memo needs
+    (days_stuck, last_repay_date, is_zombie) regardless of the verdict, not just a bool.
+    """
+    days_stuck, days_stuck_is_lower_bound = consecutive_days_at_utilization_cap(market_id, chain_id)
+    last_repay = api.get_last_transaction(market_id, "Repay", before_timestamp=before_timestamp)
+    if last_repay is None:
+        days_since_repay = None  # never repaid at all -- at least as stuck as any finite count
+        is_stale = True
+    else:
+        days_since_repay = (before_timestamp - last_repay["timestamp"]) / 86400
+        is_stale = days_since_repay >= config.ZOMBIE_MIN_DAYS_SINCE_REPAY
+    is_zombie = days_stuck >= config.ZOMBIE_MIN_DAYS_STUCK and is_stale
+    return {
+        "is_zombie": is_zombie,
+        "days_stuck": days_stuck,
+        "days_stuck_is_lower_bound": days_stuck_is_lower_bound,
+        "last_repay_timestamp": last_repay["timestamp"] if last_repay else None,
+        "days_since_repay": days_since_repay,
+    }
 
 
 def spread_waterfall(supply_apy, risk_free_rate, el_bps_range, liquidity_frac_at_cap, liquidity_bps_per_unit_cap=50):

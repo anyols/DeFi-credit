@@ -91,9 +91,19 @@ def decode_result(fn_name, data):
 
 
 def call(to, fn_name, args, block):
-    """Single eth_call against any contract. Returns a decoded tuple."""
+    """Single eth_call against any contract. Returns a decoded tuple.
+
+    Raises explicitly on an empty ("0x") return rather than letting eth_abi's own decode error
+    be the only signal -- Task 2 review point 4: a 0 or empty-0x result must raise, never be
+    silently accepted as a value. eth_abi does already raise (InsufficientDataBytes) on an empty
+    return for a non-empty expected type, so this is a clearer, intentional version of the same
+    thing, not new protection -- but it IS new protection for a (currently nonexistent) function
+    with zero return values, where eth_abi would otherwise decode empty bytes to () successfully.
+    """
     data = encode_call(fn_name, args)
     raw = w3().eth.call({"to": Web3.to_checksum_address(to), "data": data}, block_identifier=block)
+    if raw == b"":
+        raise RuntimeError(f"{fn_name} at {to} returned empty data (0x) at block {block} -- contract call failed silently")
     return decode_result(fn_name, raw)
 
 

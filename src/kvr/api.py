@@ -159,3 +159,25 @@ def get_market_liquidations(market_unique_key, limit=None, before_timestamp=None
     items = _paginate(query, {"id": market_unique_key, **variables}, "marketTransactions")
     items.sort(key=lambda t: t["timestamp"], reverse=True)
     return items[:limit] if limit else items
+
+
+def get_last_transaction(market_unique_key, tx_type, before_timestamp=None):
+    """Most recent marketTransaction of `tx_type` (e.g. "Repay") for a market, as of
+    before_timestamp (SNAPSHOT_BLOCK's own timestamp for reproducibility), or None if there has
+    never been one. Used by stress.classify_zombie to find each zombie market's last Repay.
+    """
+    if before_timestamp is not None:
+        var_decl, where, variables = "$beforeTs: Int,", ", timestamp_lte: $beforeTs", {"beforeTs": before_timestamp}
+    else:
+        var_decl, where, variables = "", "", {}
+    query = f"""
+    query($id: String!, {var_decl} $first: Int, $skip: Int) {{
+      marketTransactions(first: $first, skip: $skip,
+                          where: {{ marketUniqueKey_in: [$id], type_in: [{tx_type}]{where} }}) {{
+        items {{ txHash timestamp blockNumber }}
+        pageInfo {{ countTotal }}
+      }}
+    }}
+    """
+    items = _paginate(query, {"id": market_unique_key, **variables}, "marketTransactions")
+    return max(items, key=lambda t: t["timestamp"]) if items else None

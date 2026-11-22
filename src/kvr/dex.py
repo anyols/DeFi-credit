@@ -78,7 +78,13 @@ def fit_slippage(points):
         return None
     baseline_rate = clean[0][1]
     slips = [(q, max(1e-12, 1 - rate / baseline_rate)) for q, rate in clean[1:]]
-    log_q = np.log([q for q, _ in slips])
+    # q is a raw token amount and can exceed int64 for an 18-decimal, ~$1-priced token at the
+    # multi-million-dollar quote sizes in QUOTE_SIZES_TOKEN -- found by hand when the universe
+    # widened past WBTC/cbBTC (8 decimals, always in range): np.array() on a list of such Python
+    # ints silently makes an object-dtype array instead of float64, and np.log then fails with
+    # "int object has no attribute log". float(q) first avoids that; losing exactness here is
+    # fine, this is already a float power-law fit, not integer-exact math.
+    log_q = np.log([float(q) for q, _ in slips])
     log_slip = np.log([s for _, s in slips])
     b, log_a = np.polyfit(log_q, log_slip, 1)
     return float(np.exp(log_a)), float(b), depth_cap

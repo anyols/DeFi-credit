@@ -114,10 +114,12 @@ def fetch_price_history(coin_id, chunks=None):
     return sorted(all_points.items())
 
 
-def exceedance_frequency(prices, horizon_days=1, declustering_days=None):
+def exceedance_frequency(prices, horizon_days=1, declustering_days=None, gap_tolerance_days=None):
     """lambda(x): empirical annual exceedance frequency of a <= -x move over `horizon_days`,
     from declustered historical returns. Returns a callable lambda_fn(x) -> expected count/year,
     or None if there isn't enough history to say anything (SPEC.md: 'not estimable, judgment only').
+    lambda_fn also exposes .declustered (the kept returns, for computing an exceedance count) and
+    .years_covered (for a Poisson CI on that count) -- see poisson_rate_ci.
 
     declustering_days defaults to horizon_days, not 1: rolling horizon_days-day returns overlap
     by (horizon_days - 1) days between consecutive observations, so a single real crash shows up
@@ -126,19 +128,34 @@ def exceedance_frequency(prices, horizon_days=1, declustering_days=None):
     of this already (correctly) uses declustering_days=1, which is why that specific bug wasn't
     a declustering problem -- but get this wrong for horizon_days=7 and EL would be too HIGH
     (double-counting one crash ~7x), the opposite-direction version of the same mistake.
+
+    gap_tolerance_days (config.PRICE_GAP_TOLERANCE_DAYS): a return window is only used if its
+    actual elapsed time is within this many days of horizon_days -- found by hand while checking
+    whether the 2020-03-12 crash was captured: the merged multi-chunk history has exactly one
+    real gap (2022-09-18 missing) that would otherwise have been silently computed as a plain
+    1-day return across 2 real days, understating that return's true 1-day severity.
     """
     declustering_days = declustering_days if declustering_days is not None else horizon_days
+    gap_tolerance_days = gap_tolerance_days if gap_tolerance_days is not None else config.PRICE_GAP_TOLERANCE_DAYS
     if len(prices) < horizon_days + 10:
         return None
+    ts = np.array([t for t, _ in prices])
     values = np.array([p for _, p in prices])
-    returns = values[horizon_days:] / values[:-horizon_days] - 1
+    elapsed_days = (ts[horizon_days:] - ts[:-horizon_days]) / 86400
+    raw_returns = values[horizon_days:] / values[:-horizon_days] - 1
+    valid_mask = np.abs(elapsed_days - horizon_days) <= gap_tolerance_days
+    valid_idx = np.where(valid_mask)[0]  # original indices, for declustering by real spacing
+    returns = raw_returns[valid_mask]
+    if len(returns) == 0:
+        return None
 
     declustered = []
     last_kept_idx = -declustering_days - 1
-    for i in np.argsort(returns):  # worst first
-        if i - last_kept_idx >= declustering_days:
-            declustered.append(returns[i])
-            last_kept_idx = i
+    for pos in np.argsort(returns):  # worst first
+        idx = valid_idx[pos]
+        if idx - last_kept_idx >= declustering_days:
+            declustered.append(returns[pos])
+            last_kept_idx = idx
     declustered = np.array(declustered)
     years_covered = (prices[-1][0] - prices[0][0]) / (365.25 * 86400)
     if years_covered <= 0:
@@ -148,4 +165,26 @@ def exceedance_frequency(prices, horizon_days=1, declustering_days=None):
         count = np.sum(declustered <= -abs(x))
         return count / years_covered
 
+    lambda_fn.declustered = declustered
+    lambda_fn.years_covered = years_covered
     return lambda_fn
+
+
+def poisson_rate_ci(count, years_covered, confidence=0.90):
+    """Exact (Garwood) Poisson confidence interval for a rate estimated as count/years_covered.
+    count=0 gives a lower bound of 0.0, not undefined."""
+    from scipy import stats
+
+    alpha = 1 - confidence
+    lower = stats.chi2.ppf(alpha / 2, 2 * count) / 2 / years_covered if count > 0 else 0.0
+    upper = stats.chi2.ppf(1 - alpha / 2, 2 * (count + 1)) / 2 / years_covered
+    return lower, upper
+
+
+def lambda_with_ci(lambda_fn, x, confidence=0.90):
+    """(rate, count, (ci_lower, ci_upper)) for lambda_fn(x), using its attached .declustered /
+    .years_covered (see exceedance_frequency)."""
+    count = int(np.sum(lambda_fn.declustered <= -abs(x)))
+    rate = count / lambda_fn.years_covered
+    ci = poisson_rate_ci(count, lambda_fn.years_covered, confidence)
+    return rate, count, ci

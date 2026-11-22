@@ -167,3 +167,29 @@ def liquidity_stress(total_supply_assets, total_borrow_assets):
     withdrawable = max(0, total_supply_assets - total_borrow_assets)
     frac = withdrawable / total_supply_assets if total_supply_assets > 0 else 0.0
     return {"withdrawable": withdrawable, "withdrawable_fraction": frac}
+
+
+def loss_given_shock_curve(positions, lltv, oracle_price, total_borrow_assets, total_borrow_shares, total_supply_assets, shocks):
+    """Task 2 review point 5: for NAV-like/yield-bearing collateral where EL isn't estimable (no
+    trustworthy tail-frequency source), a pure mechanical loss-given-shock curve -- "if this
+    collateral's TRUE price dropped by x%, the shortfall would be this fraction of supply" --
+    with no probability attached at all, not even an implicit one. Deliberately bypasses the full
+    M8 liquidation loop (no slip_ab, no execution/profitability check, no path): those need a DEX
+    slippage curve, and this exact class of collateral is the one most likely to have none (see
+    dex.py's cbBTC/wstETH findings). Uses the TRUE shocked price directly, not what the market's
+    own oracle would report -- the point is to show the hidden risk a blind oracle can't see,
+    not to simulate what the protocol would currently do about it.
+    Returns {shock: loss_frac}, most negative shock last.
+    """
+    out = {}
+    for s in sorted(shocks, reverse=True):  # least severe first
+        shocked_price = int(oracle_price * (1 + s))
+        loss = 0
+        for p in positions:
+            borrowed = mm.borrowed(p["borrow_shares"], total_borrow_assets, total_borrow_shares)
+            if borrowed == 0:
+                continue
+            collateral_value = p["collateral"] * shocked_price // 10**36
+            loss += max(0, borrowed - collateral_value)
+        out[s] = loss / total_supply_assets if total_supply_assets > 0 else 0.0
+    return out

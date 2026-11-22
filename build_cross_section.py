@@ -1,6 +1,7 @@
 """M10 cross-section: all Ethereum USDC markets with supply > $1M. Separate from build_report.py
 because this pulls a much wider, slower-changing universe (66 markets at time of writing) that
-doesn't need re-pulling every time the vault's own 3 markets are re-analyzed.
+doesn't need re-pulling every time the main universe's top config.TOP_N_MARKETS markets are
+re-analyzed.
 """
 
 import json
@@ -13,13 +14,14 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 import numpy as np
 
 import config
-from kvr import api, chain, scenarios, spread
+from kvr import api, chain, scenarios, spread, universe
 
 SHOCKS = scenarios.UNDERLYING_SHOCKS
 
 
 def main():
     block = chain.w3().eth.block_number
+    block_ts = chain.w3().eth.get_block(block)["timestamp"]
     markets = spread.usdc_market_universe(min_supply_usd=1_000_000)
     print(f"{len(markets)} USDC markets with supply > $1M")
 
@@ -32,11 +34,42 @@ def main():
     rf_90d = spread.aave_usdc_supply_rate_90d_avg()
 
     rows = []
+    zombie_supply_usd_total = 0.0
+    n_zombies = 0
+    n_broken_oracle = 0
     for i, m in enumerate(markets):
         symbol = m["collateralAsset"]["symbol"] if m["collateralAsset"] else None
         coll_class = spread.classify_collateral(symbol)
         oracle_addr = m["oracle"]["address"] if m.get("oracle") else None
         oc = oracle_classes.get(oracle_addr, "UNKNOWN") if oracle_addr else "N/A"
+
+        # Same broken-oracle plausibility filter Task 1 already applies to the main universe
+        # (universe.select_universe) -- found by hand that this wider, unfiltered pool still
+        # includes it: a PAXG market and an sdeUSD market whose oracles both fail this check
+        # (reverting or implying an implausible price) report supplyAssetsUsd of $35B and $25B
+        # respectively, which would otherwise swamp every other number in this cross-section,
+        # including the zombie-supply total below (both also happen to be zombies).
+        if oracle_addr and m.get("collateralAsset"):
+            implied = universe.implied_collateral_price_usd(oracle_addr, m["collateralAsset"]["decimals"], m["loanAsset"]["decimals"], block)
+            if implied is None:
+                n_broken_oracle += 1
+                print(f"{i+1}/{len(markets)} {symbol}: EXCLUDED (broken oracle, implausible or reverting price)")
+                continue
+
+        # Task 2 review point 3: exclude zombie markets (util>=99% for 30d+, no Repay in 30d+)
+        # from the cross-section, checked BEFORE the >500%/yr APY filter below so the exclusion
+        # is attributed to the actual classifier, not just caught incidentally by that cruder
+        # heuristic -- found by hand that every real zombie's quarterlySupplyApy (APY's exp()
+        # blowing up for a pinned rate) already exceeds 500%/yr, so checking apy first would
+        # silently swallow every zombie into the generic "pinned/incentive-distorted" bucket
+        # instead of the principled classifier the review actually asked for.
+        zombie = spread.classify_zombie(m["marketId"], before_timestamp=block_ts)
+        if zombie["is_zombie"]:
+            n_zombies += 1
+            zombie_supply_usd_total += m["state"]["supplyAssetsUsd"]
+            print(f"{i+1}/{len(markets)} {symbol}: EXCLUDED (zombie, {zombie['days_stuck']}d stuck at cap)")
+            continue
+
         supply_apy = m["state"].get("quarterlySupplyApy")
         if supply_apy is None or supply_apy > 5 or rf_90d is None:  # >500%/yr: pinned/incentive-distorted, exclude
             continue
@@ -68,6 +101,8 @@ def main():
         print(f"{i+1}/{len(markets)} {symbol}: oracle={oc} class={coll_class} spread={spread_bps:.1f}bps illiq={illiq} el={el_bps}")
         time.sleep(0.05)
 
+    print(f"\nExcluded {n_broken_oracle} markets with a broken/implausible oracle (not counted toward zombie supply)")
+    print(f"Excluded {n_zombies} zombie markets from the cross-section, ${zombie_supply_usd_total:,.0f} total supply")
     Path("data/processed/cross_section.json").write_text(json.dumps(rows, indent=2, default=str))
 
     full = [r for r in rows if r["illiq"] is not None]
@@ -104,7 +139,18 @@ def main():
         print("  too few observations for this many parameters")
 
     Path("data/processed/cross_section_regression.json").write_text(
-        json.dumps({"full_sample": full_result, "btc_eth_subsample": el_result, "n_total_universe": len(markets), "n_used": len(full)}, indent=2)
+        json.dumps(
+            {
+                "full_sample": full_result,
+                "btc_eth_subsample": el_result,
+                "n_total_universe": len(markets),
+                "n_used": len(full),
+                "n_zombies_excluded": n_zombies,
+                "zombie_supply_usd_total": zombie_supply_usd_total,
+                "n_broken_oracle_excluded": n_broken_oracle,
+            },
+            indent=2,
+        )
     )
 
 

@@ -87,7 +87,9 @@ def plot_spread_waterfall(waterfalls, name="fig3_spread_waterfall.png"):
     return _save(fig, name)
 
 
-def plot_capacity_curve(curve_points, current_allocation_usd, optimal_allocation_usd, market_labels, name="fig5_capacity_and_allocation.png"):
+def plot_capacity_curve(curve_points, optimal_allocation_usd, market_labels, name="fig5_capacity_and_allocation.png"):
+    """No vault anymore (scope change), so there's no "current allocation" to compare against --
+    just the optimizer's own risk-priced split for a $1M hypothetical budget."""
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
     budgets = [p["budget"] / 1e12 for p in curve_points]  # raw 6-decimal USDC -> $M (1e6 * 1e6)
@@ -99,15 +101,11 @@ def plot_capacity_curve(curve_points, current_allocation_usd, optimal_allocation
     ax1.grid(alpha=0.3)
 
     x = np.arange(len(market_labels))
-    width = 0.35
-    # raw 6-decimal USDC -> $k: these allocations are tens of thousands of dollars, not
-    # millions, so $k keeps "current" visible next to the $1M-budget hypothetical.
-    ax2.bar(x - width / 2, [v / 1e9 for v in current_allocation_usd], width, label="Current")
-    ax2.bar(x + width / 2, [v / 1e9 for v in optimal_allocation_usd], width, label="Risk-priced optimal ($1M budget)")
+    ax2.bar(x, [v / 1e9 for v in optimal_allocation_usd], 0.6, label="Risk-priced optimal ($1M budget)")
     ax2.set_xticks(x)
     ax2.set_xticklabels(market_labels, rotation=20, ha="right")
     ax2.set_ylabel("$k")
-    ax2.set_title("Current vs risk-priced allocation")
+    ax2.set_title("Risk-priced allocation")
     ax2.legend()
     ax2.grid(alpha=0.3)
     return _save(fig, name)
