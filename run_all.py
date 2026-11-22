@@ -17,7 +17,7 @@ def main():
     if not config.SNAPSHOT_BLOCK:
         sys.exit("config.SNAPSHOT_BLOCK is not pinned yet. Set it once an RPC key is connected.")
 
-    print(f"Snapshot block {config.SNAPSHOT_BLOCK}, vault {config.VAULT}")
+    print(f"Snapshot block {config.SNAPSHOT_BLOCK}, universe: top {config.TOP_N_MARKETS} USDC markets by supply")
 
     markets = universe.build_markets()
     universe.save(markets)

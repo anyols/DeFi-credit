@@ -1,7 +1,16 @@
 """T4 (SPEC.md section 5): replay the market's real Liquidate events and check
-seized ~= repaid * LIF * 1e36 / price(block-1), tolerance "rounding only". Uses the Morpho API
-for the liquidation history (txHash/repaid/seized) and a live eth_call for price(block-1), so it
-needs a connected archive RPC.
+seized ~= repaid * LIF * 1e36 / price, tolerance "rounding only". Uses the Morpho API for the
+liquidation history (txHash/repaid/seized) and a live eth_call for the oracle price, so it needs
+a connected archive RPC.
+
+SPEC.md's own text says price(block-1); empirically that is wrong for this market and was
+caught by the global "an extreme/failing number is a bug until proven otherwise" rule, not
+assumed away: 30 of 50 real liquidations failed at 1e-6 with price(block-1), all with
+seized_actual > seized_expected. Checked the oracle price at block-1 vs the liquidation's own
+block for the first failure (0x3d87329f..., block 26460969): it dropped 1.31% within that one
+block, which is also exactly that event's relative error. Morpho's liquidate() calls
+IOracle.price() synchronously in the same transaction, so the correct read is the liquidation's
+own block, not block-1 -- confirmed by re-running all 50 events with that change: 0 mismatches.
 """
 
 import pytest
@@ -12,11 +21,11 @@ from kvr import morpho_math as mm
 
 pytestmark = pytest.mark.skipif(not config.RPC_URL, reason="RPC_URL not set; see .env.example")
 
-# The USDC/sNUSD market the vault is actually exposed to -- picked because it has real
-# liquidation history, unlike the vault's other (idle) markets.
-MARKET_ID = "0xae60b71b407e0517ead445b7113a7ffa07ea4a9379d526ade541a3e9ec777cb4"
-ORACLE = "0x28E82e7f25DbcD487af27C80DE4F62553260fecA"
-LLTV = 915000000000000000
+# USDC/WBTC -- one of the universe's top-15 markets by supply, picked because it has real,
+# plentiful liquidation history.
+MARKET_ID = "0x3a85e619751152991742810df6ec69ce473daef99e28a64ab2340d7b7ccfee49"
+ORACLE = "0xDddd770BADd886dF3864029e4B377B5F6a2B6b83"
+LLTV = 860000000000000000
 
 
 def test_t4_replay_last_50_liquidations():
@@ -26,7 +35,7 @@ def test_t4_replay_last_50_liquidations():
 
     for liq in liqs:
         block = liq["blockNumber"]
-        (price,) = chain.call(ORACLE, "price", [], block - 1)
+        (price,) = chain.call(ORACLE, "price", [], block)
         repaid = int(liq["data"]["repaidAssets"])
         seized_actual = int(liq["data"]["seizedAssets"])
         seized_expected = mm.mul_div_down(mm.w_mul_down(repaid, lif), 10**36, price)

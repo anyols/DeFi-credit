@@ -43,7 +43,7 @@ def _paginate(query, variables, path):
 
 
 def search_vaults(search, chain_id_in=None):
-    """Vault summaries matching a name/curator search string, e.g. 'keyrock'."""
+    """Vault summaries matching a name/curator search string, e.g. 'gauntlet'."""
     query = """
     query($search: String, $chainIds: [Int!], $first: Int, $skip: Int) {
       vaults(first: $first, skip: $skip, where: { search: $search, chainId_in: $chainIds }) {
@@ -99,7 +99,7 @@ def get_market(market_id, chain_id=None):
         irmAddress
         oracle { address }
         morphoBlue { address chain { id } }
-        state { supplyShares borrowShares utilization price rateAtTarget liquidityAssets }
+        state { supplyShares borrowShares utilization price rateAtTarget liquidityAssets supplyAssetsUsd borrowAssetsUsd }
       }
     }
     """

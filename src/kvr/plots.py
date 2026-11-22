@@ -100,8 +100,8 @@ def plot_capacity_curve(curve_points, current_allocation_usd, optimal_allocation
 
     x = np.arange(len(market_labels))
     width = 0.35
-    # raw 6-decimal USDC -> $k: the vault's real current allocations are tens of thousands of
-    # dollars, not millions, so $k keeps "current" visible next to the $1M-budget hypothetical.
+    # raw 6-decimal USDC -> $k: these allocations are tens of thousands of dollars, not
+    # millions, so $k keeps "current" visible next to the $1M-budget hypothetical.
     ax2.bar(x - width / 2, [v / 1e9 for v in current_allocation_usd], width, label="Current")
     ax2.bar(x + width / 2, [v / 1e9 for v in optimal_allocation_usd], width, label="Risk-priced optimal ($1M budget)")
     ax2.set_xticks(x)
@@ -149,7 +149,7 @@ def plot_cross_section(rows, name="fig4_cross_section_scatter.png"):
 
 def plot_stream_case(comparison, name="fig6_stream_case.png"):
     """comparison: {label: {"hhi":.., "top1_share":.., "oracle_class":str}} for the xUSD market
-    and, for reference, the vault's own real markets."""
+    and, for reference, markets in our own universe."""
     labels = list(comparison.keys())
     hhi = [comparison[l]["hhi"] or 0 for l in labels]
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -158,7 +158,7 @@ def plot_stream_case(comparison, name="fig6_stream_case.png"):
     for i, l in enumerate(labels):
         ax.annotate(comparison[l]["oracle_class"], (i, hhi[i]), ha="center", va="bottom")
     ax.set_ylabel("Borrower HHI (0-1)")
-    ax.set_title("Stream/xUSD case: concentration + oracle class vs the vault's own markets")
+    ax.set_title("Stream/xUSD case: concentration + oracle class vs our own universe's markets")
     ax.set_xticklabels(labels, rotation=20, ha="right")
     ax.grid(alpha=0.3)
     return _save(fig, name)

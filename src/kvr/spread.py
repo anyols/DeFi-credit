@@ -155,7 +155,7 @@ def el_proxy_bps(supply_usd, borrow_usd, collateral_usd, lambda_fn, shocks):
     per-borrower distribution, no LIF/slippage -- just max(0, borrow_usd - shocked collateral
     value) / supply_usd, matching stress.py's economic_loss definition but computed in aggregate
     instead of per-position). A real simplification, for cross-sectional comparison only --
-    the vault's own 3 markets get the full per-position M8 treatment elsewhere.
+    the universe's own markets get the full per-position M8 treatment elsewhere.
     """
     if lambda_fn is None or not collateral_usd or not borrow_usd or not supply_usd:
         return None

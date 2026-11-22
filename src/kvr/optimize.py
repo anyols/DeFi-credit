@@ -18,7 +18,7 @@ SECONDS_PER_YEAR = 365 * 24 * 60 * 60
 
 def income_rate(x, supply_assets, borrow_assets, rate_at_target, fee_frac=0.0):
     """Marginal annual income (in loan-token units) from depositing x more into this market,
-    holding borrow demand (Bor_i) fixed -- the vault's deposit only dilutes utilization down.
+    holding borrow demand (Bor_i) fixed -- the extra deposit only dilutes utilization down.
     """
     new_supply = supply_assets + x
     if new_supply == 0 or borrow_assets == 0:
@@ -26,8 +26,8 @@ def income_rate(x, supply_assets, borrow_assets, rate_at_target, fee_frac=0.0):
     u = irm.utilization(borrow_assets, new_supply)
     borrow_rate_per_second, _end_rt = irm.borrow_rate(u, rate_at_target, 0)
     borrow_apy = irm.apy_from_per_second_rate(borrow_rate_per_second)
-    vault_share = x / new_supply
-    return vault_share * borrow_assets * borrow_apy * (1 - fee_frac)
+    our_share = x / new_supply
+    return our_share * borrow_assets * borrow_apy * (1 - fee_frac)
 
 
 def greedy_water_fill(markets, budget, step=50_000 * 10**6, el_rate_default=0.0):
@@ -74,20 +74,18 @@ def slsqp_check(markets, budget, el_rate_default=0.0, n_starts=5, seed=0):
     found (by objective value) alongside the greedy solution, for comparison -- not a
     replacement, since SLSQP can land in a different local optimum depending on the start.
 
-    Known divergence, found by running this against the vault's real markets: for a market
-    already sitting at extreme utilization long enough that its rateAtTarget has drifted to
-    AdaptiveCurveIrm's own MAX_RATE_AT_TARGET ceiling (the vault's USDC/sNUSD market has been at
-    ~100% utilization for all of the last 90 days -- see spread.py's findings), income_rate(x)
-    spikes near x->0: observed 12,402% implied APY at a $1,000 deposit, and SLSQP actually
-    landed on a $309 allocation there implying 107,735% APY (a claimed $333k of "income" from a
-    $309 deposit) -- before settling down to a sane ~4.5% by $309k. This is SPEC.md M11's own
-    "hold Bor_i fixed" assumption
-    assumption breaking down exactly where utilization is already pinned near 100%: real borrow
-    demand is rate-sensitive, so no borrower actually keeps paying as the rate implied by a tiny
-    marginal deposit spikes -- this isn't capturable income, it's a modeling artifact. SLSQP's
-    gradient search can get pulled toward this spike from some starting points; greedy's coarse
-    $50k step size never samples a small enough x to find it, which is incidentally more robust
-    here, not because greedy is the better algorithm in general.
+    Known divergence, first found against a market sitting at extreme utilization long enough
+    that its rateAtTarget had drifted to AdaptiveCurveIrm's own MAX_RATE_AT_TARGET ceiling (a
+    market pinned at ~100% utilization for an extended stretch -- see spread.py's findings for
+    the general pattern): income_rate(x) spikes near x->0 for any such market, because SPEC.md
+    M11's own "hold Bor_i fixed" assumption breaks down exactly where utilization is already
+    pinned near 100% -- real borrow demand is rate-sensitive, so no borrower actually keeps
+    paying as the rate implied by a tiny marginal deposit spikes; this isn't capturable income,
+    it's a modeling artifact. SLSQP's gradient search can get pulled toward this spike from some
+    starting points; greedy's coarse $50k step size never samples a small enough x to find it,
+    which is incidentally more robust here, not because greedy is the better algorithm in
+    general. Re-check this docstring's claim whenever a market in the live universe is this
+    extreme -- the numbers here are illustrative of the shape of the bug, not a fixed example.
     """
     n = len(markets)
     caps = [m.get("cap", budget) for m in markets]
