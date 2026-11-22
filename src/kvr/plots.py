@@ -213,3 +213,27 @@ def plot_liq_edge_left_on_table(summaries, name="fig9_liq_edge_left_on_table.png
     ax.tick_params(axis="x", rotation=20)
     ax.grid(alpha=0.3)
     return _save(fig, name)
+
+
+def plot_zombie_markets(zombies, zombie_supply_usd_total, healthy_supply_usd_total, name="fig10_zombie_markets.png"):
+    """Memo (Task 5). zombies: {label: {"supply_usd":.., "apr":.., "days_stuck":..}} (report_results.json's
+    own zombies dict) -- utilization>=99% for 30d+, no Repay in 30d+ (spread.classify_zombie)."""
+    labels = [z["collateral"] for z in zombies.values()]
+    supply_m = [z["supply_usd"] / 1e6 for z in zombies.values()]
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5))
+
+    ax1.bar(labels, supply_m, color="crimson")
+    ax1.set_ylabel("Reported supply ($M)")
+    ax1.set_title("Zombie market supply (stuck, >=99% utilization, no repay 30d+)")
+    ax1.tick_params(axis="x", rotation=20)
+    ax1.grid(alpha=0.3)
+
+    ax2.pie(
+        [zombie_supply_usd_total, healthy_supply_usd_total],
+        labels=[f"Zombie (${zombie_supply_usd_total/1e9:.2f}B)", f"Healthy (${healthy_supply_usd_total/1e9:.2f}B)"],
+        colors=["crimson", "steelblue"],
+        autopct="%1.0f%%",
+    )
+    ax2.set_title("Share of top-15 USDC markets' supply")
+    fig.suptitle("Zombie markets: reported supply that isn't actively managed")
+    return _save(fig, name)

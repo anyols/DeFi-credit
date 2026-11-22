@@ -1123,5 +1123,308 @@
     "reports\\figures\\fig7_liq_edge_profitability.png",
     "reports\\figures\\fig8_liq_edge_delay.png",
     "reports\\figures\\fig9_liq_edge_left_on_table.png"
-  ]
+  ],
+  "delay_validation": {
+    "AZND": {
+      "representative_delay_hours": 2758,
+      "median_delay_hours_full_sample": 2758,
+      "tx_hash": "0xd60bfb3659f744e7ac59645d287e048e3e0c3dcc482288bcc1105cba7fe0aaf4",
+      "any_healthy_sample": true,
+      "verified": false,
+      "measured_apr": null,
+      "samples": [
+        {
+          "block": 24691066,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24782999,
+          "hf": 1.0891617602952222,
+          "debt_usd": 150023.62914
+        },
+        {
+          "block": 24874933,
+          "hf": 1.1406937904799415,
+          "debt_usd": 143246.155422
+        },
+        {
+          "block": 24966866,
+          "hf": 1.1373458426317118,
+          "debt_usd": 143667.821937
+        },
+        {
+          "block": 25058799,
+          "hf": 1.1336537105684061,
+          "debt_usd": 144135.725466
+        },
+        {
+          "block": 25150733,
+          "hf": 1.1303775770382487,
+          "debt_usd": 144553.468964
+        },
+        {
+          "block": 25242666,
+          "hf": 1.1300441508355543,
+          "debt_usd": 144596.120319
+        },
+        {
+          "block": 25334599,
+          "hf": 1.1249819556250675,
+          "debt_usd": 145246.774122
+        },
+        {
+          "block": 25426533,
+          "hf": 1.0732537766410861,
+          "debt_usd": 7733922.93664
+        },
+        {
+          "block": 25518466,
+          "hf": 0.9258209808047257,
+          "debt_usd": 8807807.561732
+        }
+      ]
+    },
+    "RLP": {
+      "representative_delay_hours": 11026,
+      "median_delay_hours_full_sample": 11026,
+      "tx_hash": "0xcd1d9844b5ecada790da148744608e3fe22321dae39c3b55455266584c7d8f36",
+      "any_healthy_sample": true,
+      "verified": false,
+      "measured_apr": null,
+      "samples": [
+        {
+          "block": 21515491,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 21883024,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 22250558,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 22618091,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 22985624,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 23353158,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 23720691,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24088224,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24455758,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24823291,
+          "hf": 0.9773788610378319,
+          "debt_usd": 36229.462379
+        }
+      ]
+    },
+    "USR": {
+      "representative_delay_hours": 9436,
+      "median_delay_hours_full_sample": 9436,
+      "tx_hash": "0xa04b392a960b7de094c0ae192b115adcb0a86e5b781c814a39bb2005877fe3b6",
+      "any_healthy_sample": true,
+      "verified": false,
+      "measured_apr": null,
+      "samples": [
+        {
+          "block": 21515808,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 21830341,
+          "hf": 1.2729911079984806,
+          "debt_usd": 1.110886
+        },
+        {
+          "block": 22144875,
+          "hf": 1.049263638249326,
+          "debt_usd": 0.019284
+        },
+        {
+          "block": 22459408,
+          "hf": 1.0418082586757285,
+          "debt_usd": 0.019422
+        },
+        {
+          "block": 22773941,
+          "hf": 1.033823829961169,
+          "debt_usd": 0.019572
+        },
+        {
+          "block": 23088475,
+          "hf": 1.025336981858721,
+          "debt_usd": 0.019734
+        },
+        {
+          "block": 23403008,
+          "hf": 1.0161201225330185,
+          "debt_usd": 0.019913
+        },
+        {
+          "block": 23717541,
+          "hf": 1.0095798822472808,
+          "debt_usd": 0.020042
+        },
+        {
+          "block": 24032075,
+          "hf": 1.001931171081951,
+          "debt_usd": 0.020195
+        },
+        {
+          "block": 24346608,
+          "hf": 24.979166666666668,
+          "debt_usd": 4.8e-05
+        }
+      ]
+    },
+    "wstUSR": {
+      "representative_delay_hours": 11632,
+      "median_delay_hours_full_sample": 11632,
+      "tx_hash": "0x5a03ff511253a0fc377abbb0b752168bf3bc1de66ab861b215051dd12d57e8d5",
+      "any_healthy_sample": true,
+      "verified": false,
+      "measured_apr": null,
+      "samples": [
+        {
+          "block": 21523628,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 21911361,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 22299095,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 22686828,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 23074561,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 23462295,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 23850028,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24237761,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24625495,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 25013228,
+          "hf": 0.6214867313343543,
+          "debt_usd": 6771103.253038
+        }
+      ]
+    },
+    "PT-RLP-9APR2026": {
+      "representative_delay_hours": 4725,
+      "median_delay_hours_full_sample": 4725,
+      "tx_hash": "0xb22fbf0b655b14b36f5d0917e16785b02d58f1adf5911ca1d3e558a83bd1a156",
+      "any_healthy_sample": true,
+      "verified": false,
+      "measured_apr": null,
+      "samples": [
+        {
+          "block": 23944499,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24101999,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24259499,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24416999,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24574499,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        },
+        {
+          "block": 24731999,
+          "hf": 1.8266415448485347,
+          "debt_usd": 0.279173
+        },
+        {
+          "block": 24889499,
+          "hf": 1.844260097860158,
+          "debt_usd": 0.279787
+        },
+        {
+          "block": 25046999,
+          "hf": 1.844260097860158,
+          "debt_usd": 0.279787
+        },
+        {
+          "block": 25204499,
+          "hf": 1.844260097860158,
+          "debt_usd": 0.279787
+        },
+        {
+          "block": 25361999,
+          "hf": Infinity,
+          "debt_usd": 0.0
+        }
+      ]
+    }
+  },
+  "delay_validation_note": "Per post-Task-4 review: HF sampled at 10 evenly spaced blocks across each claimed delay window for AZND/RLP/USR/wstUSR/PT-RLP-9APR2026. All 5 showed a healthy (HF>=1) sample within the claimed window, falsifying the fixed-breakeven continuous-breach assumption the extended search relies on (root cause confirmed for RLP: an intermediate partial liquidation changed collateral/debt mid-window, which the search does not account for). These delay numbers are therefore marked unverified and excluded from the memo."
 }

@@ -291,6 +291,56 @@ def delay_to_liquidation_hours_extended(oracle_address, breakeven_px, liq_block,
     )
 
 
+def validate_delay_window(market_id, user, oracle_address, lltv_raw, execution_block, delay_hours, blocks_per_hour=None, n_samples=10):
+    """Review (post-Task-4) fix: spot-check the exponential/binary delay search's own
+    monotonicity assumption by directly sampling HF at n_samples evenly spaced blocks across
+    the claimed window [execution_block - delay_hours*blocks_per_hour, execution_block].
+    collateral and lltv are read fresh at each sample block (not assumed constant) -- a
+    SupplyCollateral/WithdrawCollateral during the window would show up here. If ANY sample has
+    HF >= 1 (healthy), the claimed continuous-breach delay is false and must be excluded, not
+    reported. Also returns a MEASURED average borrow APR over the window, from the sampled
+    debt's own growth (not the assumed/pinned rate) -- None if debt ever decreases between
+    samples (a Repay happened, breaking the "no intervening repayment" assumption) or if the
+    window has zero width.
+    """
+    blocks_per_hour = blocks_per_hour if blocks_per_hour is not None else config.LIQ_EDGE_BLOCKS_PER_HOUR
+    window_blocks = delay_hours * blocks_per_hour
+    if window_blocks <= 0:
+        return {"samples": [], "any_healthy": False, "measured_apr": None, "verified": True, "note": "zero-width window"}
+
+    blocks = [execution_block - window_blocks + round(i * window_blocks / (n_samples - 1)) for i in range(n_samples)]
+    samples = []
+    for b in blocks:
+        try:
+            debt, collateral = position_debt_and_collateral(market_id, user, b)
+            price = oracle.read_price(oracle_address, b, max_retries=5)
+        except Exception:
+            samples.append({"block": b, "hf": None, "debt_usd": None})
+            continue
+        hf = (mm.max_borrow(collateral, price, lltv_raw) / debt) if debt > 0 else float("inf")
+        samples.append({"block": b, "hf": hf, "debt_usd": debt / 1e6, "collateral_raw": collateral})
+
+    any_healthy = any(s["hf"] is not None and s["hf"] >= 1.0 for s in samples)
+
+    valid_debts = [(b, s["debt_usd"]) for b, s in zip(blocks, samples) if s["debt_usd"] is not None]
+    measured_apr = None
+    if len(valid_debts) >= 2:
+        debts_only = [d for _b, d in valid_debts]
+        monotonic = all(debts_only[i + 1] >= debts_only[i] - 1e-9 for i in range(len(debts_only) - 1))
+        if monotonic and debts_only[0] > 0:
+            (b0, d0), (b1, d1) = valid_debts[0], valid_debts[-1]
+            elapsed_years = (b1 - b0) * 12 / (365.25 * 86400)  # ~12s/block, same approximation as LIQ_EDGE_BLOCKS_PER_HOUR
+            if elapsed_years > 0:
+                measured_apr = (d1 / d0 - 1) / elapsed_years
+
+    return {
+        "samples": samples,
+        "any_healthy": any_healthy,
+        "measured_apr": measured_apr,
+        "verified": not any_healthy,
+    }
+
+
 def decompose_hf_decline(collateral, lltv_raw, debt_breach, debt_exec, price_breach, price_exec):
     """Review fix 4: approximate attribution of the HF decline from breach (HF ~= 1.0 there, by
     definition -- that's what "breach" means) to execution, into price-driven vs interest-

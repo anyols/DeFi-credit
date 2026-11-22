@@ -1,234 +1,174 @@
-# Keyrock USDC (Morpho): what the yield pays for
+# Where DeFi lending risk actually sits: not where prices move, but where nobody can sell
 
-Snapshot: block 26,465,719 (Ethereum mainnet, 2026-11-21). Markets: 4. Vault TVL: $53,896
-(`0x6C26793c7F1e2785c09b460676e797b716f0Bc8E`, "Keyrock USDC", unlisted).
-
-Note on scope: `morpho_math.py`, `irm.py`, `stress.py`, and this memo's judgment calls were
-written by Claude Code at the user's explicit request to reallocate SPEC.md's hand-written-math
-ownership split, given time constraints, after the tradeoff (SPEC.md section 8's
-whiteboard-derivation framing) was flagged. Every formula is still tested against real on-chain
-and API data, not just transcribed from the spec (see `tests/`).
+Snapshot: block 26,465,719 (Ethereum mainnet). Universe: top 15 USDC Morpho Blue markets by
+supply (`config.TOP_N_MARKETS`, `config.MIN_SUPPLY_USD=$5M`). Liquidation data: last 24 months
+(`config.LIQ_EDGE_LOOKBACK_DAYS=730`), 886 real `Liquidate` events across the universe.
 
 ## TL;DR
 
-- The vault's one actually-funded market (USDC/sNUSD, $17.3k) pays **3.14% (90d trailing avg)
-  while Aave's USDC rate is 3.90%** -- a **-77bps spread against risk-free** on paper, on a
-  market with an oracle that can't see a depeg, zero Uniswap V3 depth, and 100% utilization on
-  every single day of the past 90. But the 90d average is stale: T5 (ground-truth on-chain
-  `totalAssets`/`totalSupply`, not the API's own disagreeing `monthlyApy` field) shows the
-  market's own per-share value has actually been compounding at an accelerating, IRM-ceiling-
-  pinned rate recently -- the vault's realized return over just the last 30 days, **if it had
-  been fully allocated there, would annualize to ~236,785%**. It wasn't: only ~29% of the
-  vault's capital sits in that market (the rest idle), so the vault's actual blended 30d return
-  is ~670% annualized, not ~236,785% -- still extreme, still unstable, still not a sign of a
-  good position, just proof the 3.14% headline number is already out of date in the dangerous
-  direction. Its two approved-but-unfunded siblings (USDC/cbBTC, USDC/WBTC, combined ~$600M of
-  unused cap) pay less than risk-free on the same 90d basis, by -13bps and -12bps, with no sign
-  of the same rate-spike dynamic (their utilization isn't pinned the way sNUSD's is).
-- **Weakest market: USDC/sNUSD.** `EXCHANGE_RATE` oracle (no price feed at all -- see
-  `oracle.classify`), confirmed zero Uniswap V3 depth at any size/fee tier for sNUSD->USDC, and a
-  debt-weighted distance-to-liquidation of essentially 0% (fig 1) -- the whole book is already at
-  the edge. USDC/WBTC is the only market with enough real Uniswap V3 depth to even compute a
-  liquidation breakpoint, and it's a mild **-10% shock**, well before economic losses become
-  visible (fig 2) -- see "the gap vs gradual paths overlap" below.
-- **Risk-priced allocation vs current:** for a hypothetical $1M budget, the risk-priced optimizer
-  puts $800k in USDC/cbBTC and $150k in USDC/WBTC (fig 5) -- markets the vault currently has
-  **zero dollars** deployed into despite $500M+/$100M+ of approved, unused cap. The binding
-  constraint isn't a risk tradeoff the model found; it's that the vault simply hasn't deployed
-  its capital. The $17.3k it does have out is in the single worst-scoring market of the four.
+1. **Liquid collateral (WBTC/cbBTC/wstETH): 609 liquidations over 24 months, 97-99% of volume
+   liquidated profitably** (WBTC 99.3%, cbBTC 97.4%, wstETH 99.6% -- `liq_edge.profitability_stats`,
+   volume-weighted, dust excluded), **median delay < 1 hour.** Liquidation works here; no edge
+   for anyone.
+2. **Collateral with no DEX exit (RLP, USR, wstUSR, PT notes, AZND): 5 of the 15 largest USDC
+   markets are zombies** (`spread.classify_zombie`: >=99% utilization for 30d+, no Repay in
+   30d+), pinned at a measured ~800% APR (`spread.onchain_supply_apr`, read from the on-chain
+   IRM, not assumed), holding **$1.22B of reported supply -- 62% of this universe's total**. The
+   delay-to-liquidation figures this project first computed for these markets did not survive a
+   direct health-factor check (see Findings) and are excluded here. What's verified: the RLP
+   market crystallized **$1.18M of bad debt** from a position that was already ~38% underwater
+   before anyone could act, because RLP has zero DEX depth at any size or fee tier (`dex.best_route`).
+3. **The model flags these structurally in advance**, before any loss prints: oracle class, DEX
+   depth, and borrower concentration are all computable from indexed state alone, no stress run
+   needed -- the same two checks (oracle class + concentration) flagged Stream/xUSD before its
+   Nov 2025 collapse (see Backtest). The edge in markets like RLP/USR belongs to whoever can exit
+   through issuer redemption, not to whoever hedges best -- and this project could not verify that
+   redemption is actually available on reasonable terms for most of them (see Limitations).
 
 ## Findings
 
-**Oracle + liquidity profile, all 3 real markets (figs 1, 6):**
-USDC/cbBTC and USDC/WBTC classify `MARKET` (real Chainlink feeds: cbBTC via "BTC / USD";
-WBTC via "WBTC / BTC" -> "BTC / USD" -> "USDC / USD"). USDC/sNUSD classifies `EXCHANGE_RATE`
-with zero feeds at all -- its price is purely a vault-conversion rate, so a secondary-market
-depeg is invisible to it, structurally identical to the oracle risk that let Stream's xUSD bad
-debt go unflagged (see Backtest, below). Separately, and more surprisingly: **USDC/cbBTC also
-has no usable Uniswap V3 depth** at this block (quoted output barely moves across a 400x size
-range, 0.5-200 BTC) -- a real pool-liquidity finding, not a bug (confirmed by direct
-`quoteExactInputSingle` calls). Only USDC/WBTC has a fittable slippage curve.
+**Liquid markets: liquidation works, and it isn't close (fig 7, fig 8).** WBTC (239 events),
+cbBTC (148), wstETH (222) over 24 months. Profitable share by count (88-91%) is meaningfully
+lower than by USD volume (97-99%) because the unprofitable events are small -- gas dominates a
+tiny liquidation almost by construction, so dust (<$1k repaid, `config.LIQ_EDGE_DUST_THRESHOLD_USD`)
+is reported separately rather than folded into the headline. Gas is priced at the exact execution
+block via Chainlink's own ETH/USD feed (`liq_edge.eth_usd_price_at_block`), not a daily average.
+Median delay to liquidation is 0 hours for all three -- liquidator bots act same-block, often in
+the same block as the price-feed update that makes the position liquidatable in the first place
+(confirmed directly: one real WBTC event's oracle price moved from $56,758 to $56,015 -- healthy
+to liquidatable -- within its own execution block).
 
-**The liquidation breakpoint (fig 2, hero chart), USDC/WBTC only (no fit exists for the other two):**
-At a mild **-10% shock**, just 14 of 637 positions go liquidatable -- but their combined ~40 BTC
-of collateral already pushes the aggregate Uniswap V3 slippage to 9.7%, above the LIF breakeven
-of 4.2% (`LIF = min(1.15, 1/(0.7+0.3*lltv)) = 1.0438` at this market's 86% LLTV). The whole batch
-is stranded. Economic losses stay near zero through -30% and only become material at -45% to
--60% (fig 2) -- **the operational breakdown (liquidators walking away) happens 20-50 points of
-shock before a naive loss number would show anything wrong.** The gap (K=1) and gradual (K=6)
-paths are visually identical in fig 2: gradual unwinding only helps if liquidators can act
-profitably at an early, mild step, and here they can't -- they're already stranded at the first
-step that reaches -10%.
+**Illiquid markets: the delay claim didn't survive validation.** The project's first pass
+reported multi-hundred-day delays for AZND/RLP/USR/wstUSR/PT-RLP-9APR2026, found by searching the
+oracle's historical price against a breakeven computed once from the position's state just
+before liquidation. Spot-checking that assumption by sampling health factor directly at 10
+evenly spaced blocks across each claimed window (`liq_edge.validate_delay_window`) found a
+healthy (HF>=1) sample inside **every one** of the five windows -- the fixed-breakeven search is
+invalid over a long window when the position's own collateral or debt changed partway through it.
+Confirmed root cause for RLP: an intermediate partial liquidation 9.6 days before the final one
+changed the position's collateral from 630,000 tokens to 1 raw unit, which the search never
+accounted for. These five delay numbers are therefore marked unverified and dropped from this
+memo, not reported with a caveat. What remains verified without that search: all five markets are
+classified zombies, their measured on-chain borrow rate is pinned at ~800% APR
+(`spread.onchain_supply_apr`), and none has any Uniswap V3 or aggregator depth at any size
+(`dex.best_route`, `dex.aggregator_quote_curve` -- both exhausted, zero result).
 
-**Spread waterfall (fig 3):** all three real markets pay a negative spread over the 90d Aave
-USDC rate (3.90%). The EL and liquidity components in the waterfall are small and do not explain
-the gap -- the residual carries almost the entire -77/-13/-12bps. Read this as the model
-under-measuring risk, not as proof the gap is "pure alpha." Two distinct gaps sit behind that:
-(1) USDC/WBTC has an EL estimate, but it computes to ~1.7e-8 bps/yr, functionally zero, because
-EL uses a 1-day shock horizon applied uniformly across a grid that goes to -60%, and BTC has
-essentially never moved -60% in a single day (0 occurrences in 500 days of history) even though
-multi-week drawdowns of that size are common -- the 1-day lens assigns these scenarios near-zero
-annual frequency. A correct EL would scale the horizon with the shock size (SPEC.md's own
-lambda(x) is horizon-dependent); this version doesn't, and likely understates EL by a wide
-margin. (2) USDC/cbBTC has no EL estimate at all, for an unrelated reason: it has no usable
-Uniswap V3 depth, so there's no stress sweep for EL to weight in the first place. USDC/sNUSD
-also has none, for a third, more fundamental reason: not a thin-data problem but a wrong-data
-one -- DefiLlama's price series for it is a smooth accounting NAV, not secondary-market trading
-data (see `scenarios.fetch_daily_prices`'s docstring), so using it to estimate depeg frequency
-would be circular, not merely noisy.
+**Zombie markets (fig 10):** 5 of 15 markets, $1.22B of this universe's $1.97B reported supply
+(62%) sits at >=99% utilization with no Repay event in 30+ days. This capital is not withdrawable
+in practice and is not being actively managed by its borrowers.
 
-**T5, vault realized return vs market return:** the API's own `monthlyApy` field for this vault
-(and `monthlySupplyApy` for the sNUSD market) reports small or negative values for the last 30
-days. Recomputing from raw `sharePriceNumber` history gave a wildly different ~601-670%
-annualized, so rather than trust either derived field, T5 goes to ground truth: ERC4626
-`totalAssets()`/`totalSupply()` read directly at two blocks 30 days apart
-(`tests/test_t5_vault_apy.py`). Confirmed: vault shares outstanding barely moved (no deposits or
-withdrawals), while `totalAssets` grew from $45,610 to $53,939 -- an 18.27% real, yield-only gain
-over 30 days (~670%/yr annualized). Checking *why* this doesn't match the sNUSD market's own
-per-share growth over the same window (176.5%, ~236,785%/yr annualized) found the vault's own
-position *in that market specifically*: $5,576 thirty days ago, $15,419 now -- the same 176.5%
-growth, confirming the vault did capture the market's full rate on the dollars actually there.
-The rest of the vault (~88% of it 30 days ago, ~71% now) was sitting idle, earning nothing,
-dragging the blended realized return down by two orders of magnitude from what "fully allocated"
-would have produced. Two things are true at once: the API's own derived APY fields for this
-vault/market are unreliable (a real, separate finding -- don't trust them without a ground-truth
-check), and the vault is leaving an enormous, albeit extremely unstable and probably unrepeatable,
-amount of yield on the table by not deploying its idle capital -- the same binding constraint
-fig 5 found from a completely different angle (the capacity/allocation optimizer).
+**RLP case study.** On 2026-05-25, a liquidation seized ~630,000 RLP and repaid $776,865.78 of
+debt -- but the position was already ~38% underwater at that moment (collateral worth ~$810,925
+against $1,313,813 of debt, both read on-chain at the block just before this event), because RLP
+has no DEX depth at all and no liquidator could act earlier without a loss. The $536,947 residual
+then kept accruing interest at the market's pinned rate (confirmed directly: debt grew from
+$956,349 to $1,079,489 in the following 9.6 days alone) until a second liquidation, 9.6 days
+later, seized the last raw unit of collateral and the protocol recognized the remaining shortfall
+-- **$1,181,253.93** -- as `badDebtAssets`. Two liquidations, not one freak event; the second is a
+formality that crystallizes a loss the first one's own economics already guaranteed.
 
-**Capacity curve and allocation (fig 5):** blended net yield falls from 4.6% at a $1M budget to
-2.2% at $50M, as larger deposits dilute utilization in the same few markets. The real finding
-isn't the curve's shape, it's the current-vs-optimal bars: the vault's actual deployment (~$17k,
-all in the worst-scoring market) looks nothing like what a $1M risk-priced allocation would do
-(mostly USDC/cbBTC and USDC/WBTC). This vault is too early-stage for "reallocate for more yield"
-to be the right framing -- it simply hasn't deployed the capital it has caps for yet. Cross-
-checking the optimizer with SLSQP from several starting points surfaced something more
-interesting than agreement: on USDC/sNUSD specifically, SLSQP lands on a $309 allocation
-claiming 107,735% implied APY (a "income" of $333k from $309), because that market's rateAtTarget
-is pinned at the IRM's own ceiling from 90 days at ~100% utilization, and the optimizer's own
-"hold borrow demand fixed" assumption breaks down completely there -- no real borrower keeps
-paying as the implied rate explodes. Excluding that one degenerate market, SLSQP and greedy agree
-on the objective to within 0.02% (`tests/test_optimize.py`), so the solver itself is sound; the
-sNUSD spike is a fact about that specific market, not a bug in either algorithm.
-
-**Cross-section (fig 4):** 66 Ethereum USDC markets with supply > $1M (n=42 after excluding
-markets with no usable supply-APY reading or an implausibly pinned one). `spread ~ illiquidity +
-oracle_class + collateral_class` gives R^2=0.40 -- illiquidity's coefficient is large and
-correctly signed (more time pinned at the utilization cap correlates with more spread), but
-oracle_class's coefficient is confounded with collateral_class (most BTC/ETH markets happen to
-use real price feeds; most stable/yield-bearing markets don't), so it shouldn't be read as "real
-feeds pay more because feeds are good." Restricting to the 12 markets where an EL proxy is even
-computable (BTC/ETH-LST collateral; everything else lacks usable tail history) makes the point
-visually in fig 4's right panel: EL proxy is 0.0 for every single one of them, because the same
-1-day shock-horizon limitation found on the vault's own USDC/WBTC market applies market-wide, not
-just to one position. With n=42-66 this is descriptive, not causal, exactly as SPEC.md expects.
-
-**Why Aave->Morpho isn't arbitrage:** naively, USDC/WBTC's 90d supply APY (3.79%) sits above
-Aave's current USDC variable borrow rate (3.65%), a 13bps gap that looks like free money. The
-funded version of that trade -- a trader who already holds WBTC borrows USDC against it on Aave
-at 86% LTV (this market's LLTV) and deposits that USDC into Morpho -- nets
-`0.86 * (0.0379 - 0.0365) = 11.4bps` (`spread.aave_morpho_funded_carry`), not 13bps, and that
-thin remainder is compensation for Aave's own liquidation risk on the collateral plus Morpho's
-credit risk on the supply side -- the same credit risk this whole project exists to price, not
-an exploitable gap.
+**Why DEX depth and redemption terms matter more here than price risk.** `spread.classify_zombie`
+and `dex.best_route` are both computable from current state with no simulation. Every zombie
+market in this universe would have shown zero DEX depth and a pinned IRM rate well before its
+debt grew large enough to matter.
 
 ## Backtest: Stream / xUSD (Nov 2025)
 
-Reduced scope (SPEC.md section 7's own cut order, applied given time): oracle class +
-concentration only, no full stress run. The market with real size is on **Arbitrum**, not
-Ethereum (`0x9e90aec7d768...`, USDC/xUSD, $287.6M borrowed as of this writing) -- found via the
-Morpho API, read via Arbitrum's public RPC since the archive RPC connected for the rest of this
-project is Ethereum-only. At the pre-announcement block (2025-11-02, found by binary search:
-395,834,395), the oracle classifies `UNKNOWN` -- none of MorphoChainlinkOracleV2's standard
-fields (feeds or vaults) resolve on this contract at all, the model's explicit "flag for manual
-review" case. Concentration (fig 6): 2 borrowers, **HHI ~= 1.0, top-1 share 99.9998%** -- for
-practical purposes a single-borrower market. What actually happened, read directly from the
-Morpho API rather than assumed: of the market's **$287.6M still borrowed**, Morpho's own
-mark-to-market shortfall estimate (`badDebt`) is **$281.9M (~98% of the book)** -- but
-`realizedBadDebt` is still $0, and only one `Liquidate` event has ever fired, writing off a
-token $187.57. The bulk of the damage is sitting unrealized, not yet crystallized through an
-actual liquidation -- a single, massively concentrated position that both can't be liquidated in
-the normal sense (no real counterparty, no functioning price discovery) and hasn't been formally
-written down. Two cheap, static checks (oracle class + concentration) would have flagged this
-market as extreme before a single stress scenario was run. What the model cannot see and doesn't
-claim to: the off-chain fund manager's trading losses that caused the depeg in the first place --
-it flags the structural vulnerability (opaque oracle, single borrower, de facto unbounded
-leverage to one counterparty), not the event.
+Unchanged from the prior pass (`stream_case.py`, Arbitrum, pre-announcement block 395,834,395
+found by binary search). Oracle class: `UNKNOWN` -- none of MorphoChainlinkOracleV2's standard
+fields resolve on this contract. Concentration: 2 borrowers, HHI ~= 1.0, top-1 share 99.9998%.
+Of the market's $294.2M still borrowed, Morpho's own mark-to-market shortfall estimate is $288.1M
+(~98%), but only one `Liquidate` event has ever fired (writing off $187.57) and `realizedBadDebt`
+is still $0 -- the damage is sitting unrealized, not crystallized. Two cheap, static checks
+(oracle class + concentration) would have flagged this market as extreme before any stress
+scenario ran, using nothing but the API's own indexed state -- the same two checks this memo's
+zombie/DEX-depth findings above are built from.
 
-## What would break this model
+## Limitations
 
-- `kappa` (depth-under-stress multiplier) and the slippage power-law fit itself are assumptions,
-  not measurements -- and for 2 of the vault's 3 real markets, there was no usable Uniswap V3
-  depth to fit at all, so even the "assumption" has no real curve to multiply.
-- Liquidations are modeled as full closes; partial liquidations, MEV ordering, and
-  liquidator-vs-liquidator competition within a step are not. Gas is a flat assumption
-  ($50 in loan-token units), not a live gas-price model.
-- No smart-contract risk, no USDC depeg (USDC is assumed at par throughout), and Keyrock itself
-  is never modeled as a liquidator (only as a passive depositor).
-- EL's 1-day shock horizon (see Findings) likely understates EL for the larger shocks in the grid
-  by a material amount; this is the single biggest known gap in the quantitative results.
-- The Morpho API's own derived APY fields (`monthlyApy`, `monthlySupplyApy`, and likely the
-  `quarterlySupplyApy`/`quarterlyNetSupplyApy` used throughout this memo's spread section too)
-  disagreed sharply with a ground-truth recomputation for this vault/market during T5. The 90d
-  `quarterlySupplyApy` figures weren't independently re-verified against raw on-chain history the
-  way T5 did for the 30d window -- they're probably stale/understated in the same direction, not
-  just possibly wrong.
-- The Stream/xUSD concentration numbers are read from the Morpho API's *current* indexed state,
-  not a true block-395,834,395 position snapshot (oracle class and realized bad debt are genuine
-  point-in-time/historical reads; concentration is a reasonable proxy, not verified pinned).
-- The cross-section's EL proxy is aggregate (market-level collateral/debt, no per-position
-  distribution, no LIF/slippage) and uses BTC's own exceedance frequency as a stand-in for
-  ETH/LST collateral too -- a real approximation, and it inherits the same 1-day-horizon
-  understatement as the vault's own EL numbers (visibly: 0.0 for all 12 markets it's computed
-  for, fig 4). The regression's oracle_class coefficient is confounded with collateral_class
-  (most BTC/ETH markets use real feeds, most stable/yield markets don't) and shouldn't be read
-  as a clean causal effect.
+Every named assumption lives in `config.py`, with its reasoning in the comment next to it:
+- `SNAPSHOT_BLOCK`, `TOP_N_MARKETS=15`, `MIN_SUPPLY_USD=$5M` -- universe selection; membership can
+  shift day to day, every number used is a fresh on-chain read pinned to the snapshot.
+- `PLAUSIBLE_PRICE_USD` -- the oracle-sanity filter that drops a market with a reverting or
+  absurd implied price; also applied to the wider cross-section after a PAXG and an sdeUSD market
+  slipped through it there with $35B/$25B reported supply (genuine on-chain state, inflated by
+  Morpho's own Taylor-series interest accrual over 400+ untouched days on a near-ceiling rate).
+- `ZOMBIE_UTIL_THRESHOLD/ZOMBIE_MIN_DAYS_STUCK/ZOMBIE_MIN_DAYS_SINCE_REPAY` -- the zombie
+  classifier's own thresholds (99% utilization, 30 days, 30 days).
+- `UNDERLYING_SHOCK_RANGE/DEPEG_SHOCK_RANGE/DEPTH_STRESS_KAPPA/PATH_STEPS` -- the M8 stress grid;
+  `kappa` (depth-under-stress multiplier) is an assumption, not a measurement.
+- **The modeled walk-away shock is -10% for every market with a breakpoint (WBTC, cbBTC, wstETH,
+  USR, PST) -- moved here, not into Findings, because it contradicts the observed 97-99%
+  profitable liquidation volume on the same three liquid markets.** The model assumes every
+  liquidatable position dumps into a single venue's depth simultaneously; real liquidators act
+  individually, often same-block, against whatever's actually available (DEX and otherwise). This
+  needs aggregator-level depth and a multi-step calibration before the number means what it looks
+  like it means. The stranding-count bug that made this figure meaningless in an earlier pass
+  (counting healthy, never-at-risk positions as "stranded") is fixed (`tests/test_stress.py`); the
+  model's own aggregate-dump assumption is the part still unresolved.
+- `PRICE_HISTORY_CHUNKS`, `PRICE_GAP_TOLERANCE_DAYS` -- BTC price-history stitching and
+  gap-exclusion tolerance for the EL tail-frequency estimate.
+- `LIQ_EDGE_LOOKBACK_DAYS=730`, `LIQ_EDGE_DELAY_SAMPLE_PER_MARKET=30` -- the 24-month window and
+  the sampling cap on the (now-retired for 5 markets) delay search; cheap per-event metrics (gas,
+  profitability, insolvency) still run over every one of the 886 real events, not a sample.
+- `LIQ_EDGE_DUST_THRESHOLD_USD=$1,000` -- below this, gas dominates almost by construction.
+- `LIQ_EDGE_HEDGE_COST_BPS=5` -- the BTC/ETH-family exit model assumes a perp hedge at this flat
+  cost; no real perp-funding feed is integrated.
+- `LIQ_EDGE_REDEMPTION_COOLDOWN_DAYS/HAIRCUT_BPS` -- RLP, USR, wstUSR, apyUSD's issuer-redemption
+  cooldown and fee are **not estimable**, confirmed by web research, not computed from a guess:
+  RLP/USR (Resolv) gate redemption on a 110% collateralization ratio, not a time window; wstUSR
+  was the collateral an attacker used to extract ~$25M from Morpho markets in Resolv's 2026-03-22
+  exploit (a compromised signing key, confirmed via Chainalysis, Rekt.news, The Block, and
+  Cointelegraph) -- Resolv states the collateral pool remains fully backed, but this project could
+  not independently verify ordinary-holder redemption terms for wstUSR in that period; apyUSD has
+  a real but unquantified on-chain unlock delay. Only fxSAVE's own primary-source docs support
+  near-instant redemption (`cooldown=0`, used with low confidence).
+- `LIQ_EDGE_COST_OF_CAPITAL_ANNUAL_FALLBACK=5%` -- used only if the live Aave USDC rate read
+  fails; the real run used the live rate (3.88%, `spread.aave_usdc_supply_rate_90d_avg`).
+- No smart-contract risk, no USDC depeg (assumed at par throughout), gas receipts and the ETH/USD
+  Chainlink feed are trusted as read; a failed read is excluded, never defaulted to zero.
 
-## What I'd build next with desk data
+## Next steps
 
-- A multi-horizon lambda(x) (1d/7d/30d) so EL stops conflating "never happens in a day" with
-  "never happens."
-- A second DEX/aggregator quote source (1inch, Curve, CoW) for sNUSD and cbBTC specifically,
-  since Uniswap V3 alone shows ~zero depth for both but real liquidations against sNUSD have
-  happened (46 of them, replayed exactly against the LIF formula in `tests/test_t4_liquidations.py`)
-  -- liquidators are evidently using a venue this model doesn't cover.
-- A sequential, MEV-aware liquidation-ordering model instead of one shared per-step slippage
-  figure, to see whether the first liquidator in each batch actually clears profitably even when
-  the aggregate doesn't.
-- A multi-horizon lambda(x) for the cross-section's EL proxy too, and per-collateral-asset price
-  history instead of reusing BTC's for the whole ETH/LST bucket.
-- A true historical position snapshot for the Stream/xUSD concentration numbers (needs Arbitrum
-  archive access at block 395,834,395, not just a public RPC's current-tip reads).
+- A calibrated stress engine: real aggregator-level depth per collateral and a multi-step
+  liquidation-ordering model, to replace the single-venue aggregate-dump assumption flagged above.
+- The funded carry trade (Aave-borrow-against-collateral into a Morpho deposit) vs. a basis trade
+  on the same collateral, to see which actually captures more of these markets' residual spread.
+- Relative value across markets carrying the same structural risk (same oracle class, same DEX
+  depth, same collateral class) instead of one market at a time.
+- A delay-reconstruction method that accounts for intermediate position changes (partial
+  liquidations, supply/withdraw) instead of assuming a fixed breakeven across a long window --
+  needed before AZND/RLP/USR/wstUSR/PT-RLP-9APR2026's delay can be reported at all.
 
 ## Reproduce
 
 ```
-python run_all.py           # M1/M2: pulls the vault's markets and positions from chain + API
-python build_report.py      # M5-M12: oracle/dex/scenarios/stress/el/spread/optimize/stream_case + figures
-python build_cross_section.py  # M10 cross-section: all Ethereum USDC markets with supply > $1M
-pytest                      # T1, T2, T3, T4, T5, T7 pass against live data; T6 is a confirmed xfail (see below)
+python run_all.py              # M1/M2: universe + positions from chain + API
+python build_report.py         # M5-M12: oracle/dex/scenarios/stress/el/spread/optimize/stream_case + figures
+python build_cross_section.py  # M10: wider USDC-market cross-section + regression
+python build_liq_edge.py       # Task 4: liquidation economics, delay, insolvency, left-on-the-table
+pytest                         # all tests pass except test_t6 (confirmed xfail, see below)
 ```
 
-**T6 fails on purpose.** It fits `dex.py`'s slippage power law on a subset of real WBTC/USDC
-Uniswap V3 quotes and checks the prediction on a held-out size, within SPEC.md's 15% tolerance.
-Real error is 28-41% depending on which size is held out, because the pool's effective exponent
-genuinely isn't constant across its own depth (see Findings) -- a real concentrated-liquidity
-pool, not a textbook passive AMM. Marked `xfail(strict=True)` rather than deleted or loosened,
-so this stays a visible, honest result.
+**T6 fails on purpose.** It fits `dex.py`'s slippage power law on a subset of real quotes and
+checks the prediction on a held-out size, within a 15% tolerance; real error is larger because
+the pool's effective exponent isn't constant across its own depth. Marked `xfail(strict=True)`,
+not deleted or loosened, so this stays a visible, honest result.
 
 Needs `RPC_URL` in `.env` (archive-capable Ethereum mainnet; see `.env.example`).
-`config.SNAPSHOT_BLOCK` is pinned; re-running later re-derives everything else from that same
-block, except `build_report.py`'s DEX/DefiLlama/Aave/Arbitrum reads, which are live.
+`config.SNAPSHOT_BLOCK` is pinned; the DEX, DefiLlama, Aave, Chainlink, and Arbitrum reads are
+live at whatever block each call is given, not the snapshot alone.
 
 ```
-keyrock-vault-risk/
-  config.py, run_all.py, build_report.py, build_cross_section.py
+defi-liquidation-risk/
+  config.py, run_all.py, build_report.py, build_cross_section.py, build_liq_edge.py
   src/kvr/  chain.py api.py universe.py positions.py morpho_math.py irm.py
             oracle.py dex.py scenarios.py stress.py el.py spread.py optimize.py
-            stream_case.py plots.py
-  tests/    test_chain.py test_universe.py test_toy.py test_optimize.py
+            stream_case.py liq_edge.py plots.py
+  tests/    test_chain.py test_universe.py test_toy.py test_optimize.py test_dex.py
+            test_stress.py test_build_report.py test_review_fixes.py test_el.py
             test_spread_cross_section.py
             test_t1_positions.py test_t2_health_factor.py test_t3_irm.py
-            test_t4_liquidations.py test_t5_vault_apy.py test_t6_slippage_holdout.py
+            test_t4_liquidations.py test_t6_slippage_holdout.py test_t8_t9_liq_edge.py
   data/processed/, reports/figures/
 ```

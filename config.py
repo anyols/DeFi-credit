@@ -110,17 +110,24 @@ LIQ_EDGE_DUST_THRESHOLD_USD = 1_000
 LIQ_EDGE_HEDGE_COST_BPS = 5
 
 # Redeemable yield-bearing collateral: exit cost = cooldown_days * cost_of_capital (daily) +
-# redemption_haircut_bps, instead of a DEX/MM sale. Verified by web research (2026-11-22; see the
-# Task 4 review report) that NONE of these had a single, reliably-sourced cooldown/fee number:
-# RLP and USR (both Resolv Protocol) gate redemption on a 110% collateralization ratio, not a
-# fixed time window; wstUSR's own underlying protocol was flagged by a third-party curation
-# report as exploited ("HACKED -- DO NOT USE") with staking/unstaking reportedly halted, so its
-# redemption status is in doubt, not just its cooldown length; apyUSD (Apyx) has a real but
-# unquantified on-chain unlock delay. Only fxSAVE (f(x) Protocol)'s own primary-source
-# integration docs describe something close to synchronous, cooldown-free redemption, used here
-# with low confidence, not as a settled fact. None means "not estimable" -- never a guessed
-# number (this project's own rule) -- so RLP/USR/wstUSR/apyUSD's exit cost is reported as not
-# estimable rather than computed from an invented day count.
+# redemption_haircut_bps, instead of a DEX/MM sale. Verified by web research (2026-11-22; see
+# the Task 4 review report) that NONE of these had a single, reliably-sourced cooldown/fee
+# number: RLP and USR (both Resolv Protocol) gate redemption on a 110% collateralization ratio,
+# not a fixed time window. wstUSR: confirmed via multiple independent reputable sources
+# (Chainalysis's own incident blog, Rekt.news, The Block, Cointelegraph) that Resolv suffered a
+# real $23-25M exploit on 2026-03-22 (a compromised signing key, not a contract flaw); the
+# attacker minted unbacked USR, converted a large share to wstUSR, and used THAT wstUSR as
+# collateral on a Morpho market to extract funds. Resolv's own public position is that the
+# collateral pool remains fully backed and no user assets were lost, and losses were capped via
+# a later contract upgrade -- but wstUSR's redemption/exit mechanics for an ordinary holder in
+# that period are not independently verified here, which is the actual reason its cost stays
+# unestimated, not a blanket "hacked, do not use" (that earlier phrasing overstated a secondary
+# source and has been corrected). apyUSD (Apyx) has a real but unquantified on-chain unlock
+# delay. Only fxSAVE (f(x) Protocol)'s own primary-source integration docs describe something
+# close to synchronous, cooldown-free redemption, used here with low confidence, not as a
+# settled fact. None means "not estimable" -- never a guessed number (this project's own rule)
+# -- so RLP/USR/wstUSR/apyUSD's exit cost is reported as not estimable rather than computed from
+# an invented day count.
 LIQ_EDGE_REDEMPTION_COOLDOWN_DAYS = {"RLP": None, "USR": None, "wstUSR": None, "apyUSD": None, "fxSAVE": 0}
 LIQ_EDGE_REDEMPTION_HAIRCUT_BPS = {"RLP": None, "USR": None, "wstUSR": None, "apyUSD": None, "fxSAVE": 0}
 
