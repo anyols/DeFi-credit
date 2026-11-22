@@ -185,6 +185,100 @@ additional perp margin, separate from the Morpho position entirely.
 
 ## Reproduce
 
+### Interactive Streamlit demo
+
+```sh
+python -m pip install -r requirements.txt
+python -m streamlit run streamlit_app.py
+```
+
+The app opens on the four research tracks. Its other tabs let you rerun the lender
+backtest, vary recovery assumptions, inspect the two published trades, stress five
+collateral markets, and calculate ETH basis carry and short-leg margin exposure.
+For an interview, try replaying with $1M of starting capital and $200k of minimum
+entry liquidity, then compare 0% and 50% recovery.
+
+The app uses the bundled compressed snapshots in `data/processed` and runs without
+RPC credentials or live data queries. The historical replay inputs and stress position
+snapshots can be repackaged with `python build_demo_data.py` after refreshing the
+historical replay cache. Repackaging uses an archive RPC for block-pinned market totals
+and oracle prices. For Streamlit Community Cloud, use `streamlit_app.py` as the entry
+point and include the processed snapshots and research figures with the source.
+
+### Point-in-time lender replay
+
+**Aave finished ahead of all three Morpho allocation rules across all four recovery scenarios.**
+The weekly replay starts with $10M on 2025-05-22 and attempts to exit on 2026-11-21.
+The Morpho API returned 760 Ethereum USDC markets created by the cutoff. Of these, 236 had
+at least one historical observation with $500k of supply before the exit date, and 225
+qualified for ranking at least once. Eligibility uses lagged supply at each rebalance and
+requires seven complete daily rate observations. No end-of-window supply or DEX screen
+enters the ranking.
+
+| Strategy | Modeled cash after exit | Residual face claim | Equity at 25% recovery | Equity at 50% recovery | Equity at 100% recovery |
+|---|---:|---:|---:|---:|---:|
+| Greedy rate ranking | $0 | $700.83M | $0.97M | $1.94M | $3.88M |
+| Add utilization and repayment screen | $0 | $373.15M | $0.57M | $1.15M | $2.30M |
+| Add free-liquidity screen | $2.63M | $19.60M | $3.26M | $3.90M | $5.18M |
+| Aave v3 USDC | $10.57M | $0 | $10.57M | $10.57M | $10.57M |
+
+Modeled cash after exit is the 0% recovery case. The higher scenarios apply their
+recovery rates to the portion of each residual claim covered by the market's indexed
+collateral-to-debt ratio, capped at par. Missing collateral marks receive zero recovery.
+This uses aggregate collateral marks. It assumes a pro-rata allocation and leaves
+borrower-level recoveries, exit prices, execution costs, and recovery timing unmodeled.
+Face claims include accrued interest on positions the replay could not withdraw.
+
+**What each rule added.** Greedy targets up to five equal sleeves ranked by seven-day
+trailing supply APR. The repayment screen requires 30 daily observations and excludes a
+market when utilization was at least 99% on 14 or more of those days and there was no
+positive Repay event. It reduced residual face claims but produced lower collateral-marked
+recovery than greedy in this window. The liquidity screen also requires prior-day free
+USDC of at least $2M, the initial sleeve size. This rule improved exit proceeds and still
+left most reported exposure trapped. These are in-sample comparisons. The original
+snapshot oracle and DEX screen remains in the separate exploratory backtest
+([legacy results](data/processed/backtest.json)).
+
+**Worked trade before deterioration.** On 2025-06-19, PT-syrupUSDC-28AUG2025 with market ID
+`0x3bdb5805…` ranked at 11.98% trailing APR. The 2025-06-18 input showed 88.91% utilization,
+a recent repayment, and $870k of free USDC. Greedy added $1.49M and the repayment-screen
+strategy added $2.01M. The liquidity-screen strategy did not select this market. It did
+select another Morpho market with the same collateral symbol. The first market reached
+99% utilization on 2025-08-26 and was at or above that level on 21 of the following 30
+observations including the crossing. Greedy and the repayment-screen strategy had no
+claim left in this market at the end. They withdrew $2.05M and $2.01M respectively in
+later rebalances, including balances already held on the decision date. Terminal free
+liquidity was $0.83. This example shows what the liquidity screen saw early and why one
+blocked allocation cannot establish an avoided loss.
+
+**Worked trade in an already distressed market.** On 2025-05-22, greedy put $2M into
+PAXG market `0x8eaf7b29…` at about 800% trailing APR. The previous day's data showed
+only $19.69 of free USDC, 30 days near full utilization, and no positive Repay event.
+Both screens rejected it. The greedy replay made no withdrawals from that market.
+Archive RPC checks matched indexed free USDC on the input and terminal dates for both
+worked markets to within one USDC base unit.
+
+The replay ranks on prior-day and earlier inputs, uses the execution day's indexed
+opening liquidity for fills, and books that day's interest and bad debt after trading.
+It approximates execution from daily snapshots, charges a flat $50 per Morpho action,
+and models own-deposit rate dilution against historical borrow demand. Withdrawals are
+capped by observed external free USDC. The simulator does not credit unobserved
+liquidity from its own deposits or model borrowers' response to those deposits. This is
+a conservative exit convention. Idle cash earns zero, the replay assumes zero Morpho
+market fees, and the Aave benchmark assumes full exit at par with no trading friction.
+
+```
+python build_historical_replay.py --refresh --spot-check
+python build_historical_replay.py  # rerun offline with the cached inputs
+```
+
+The refresh requires Morpho, DefiLlama, and the configured Ethereum archive RPC.
+Inputs are cached in `data/raw/historical_replay.json`. The
+[replay results](data/processed/historical_replay.json) include recovery sensitivity,
+worked trades, and the RPC checks when run with `--spot-check`.
+
+### Original analysis
+
 ```
 python run_all.py              # M1/M2: universe + positions from chain + API
 python build_report.py         # M5-M12: oracle/dex/scenarios/stress/el/spread/optimize/stream_case + figures
