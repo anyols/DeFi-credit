@@ -126,29 +126,41 @@ def get_market_positions(market_unique_key, borrowers_only=False):
     return _paginate(query, {"id": market_unique_key}, "marketPositions")
 
 
-def get_market_liquidations(market_unique_key, limit=None, before_timestamp=None):
+def get_market_liquidations(market_unique_key, limit=None, before_timestamp=None, since_timestamp=None):
     """before_timestamp pins the result to "the last `limit` liquidations as of this timestamp"
     instead of "as of whenever this happens to be called" -- found necessary while re-running
     T4 against an actively-liquidated market (USDC/WBTC): without it, re-running minutes apart
     returns a different window as new real liquidations occur, which is not reproducible and
     not consistent with this project's SNAPSHOT_BLOCK pinning everywhere else. Pass
     config.SNAPSHOT_BLOCK's own timestamp for a reproducible call.
+
+    since_timestamp (Task 4: liq_edge.py's 24-month lookback) adds a lower bound; also includes
+    each transaction's user (the liquidated borrower, not the liquidator in `data`) and
+    repaidShares/badDebtShares, needed to reconstruct a position's state before liquidation.
     """
-    # $beforeTs is only declared/passed when used -- GraphQL's NoUnusedVariables validation
-    # rejects a declared-but-unreferenced variable, even a nullable one passed as None.
+    # Each optional variable is only declared/passed when used -- GraphQL's NoUnusedVariables
+    # validation rejects a declared-but-unreferenced variable, even a nullable one passed as None.
+    var_decls, wheres, variables = [], [], {}
     if before_timestamp is not None:
-        var_decl, where, variables = "$beforeTs: Int,", ", timestamp_lte: $beforeTs", {"beforeTs": before_timestamp}
-    else:
-        var_decl, where, variables = "", "", {}
+        var_decls.append("$beforeTs: Int")
+        wheres.append("timestamp_lte: $beforeTs")
+        variables["beforeTs"] = before_timestamp
+    if since_timestamp is not None:
+        var_decls.append("$sinceTs: Int")
+        wheres.append("timestamp_gte: $sinceTs")
+        variables["sinceTs"] = since_timestamp
+    var_decl = ("".join(d + ", " for d in var_decls))
+    where = ("".join(", " + w for w in wheres))
     query = f"""
     query($id: String!, {var_decl} $first: Int, $skip: Int) {{
       marketTransactions(first: $first, skip: $skip,
                           where: {{ marketUniqueKey_in: [$id], type_in: [Liquidation]{where} }}) {{
         items {{
           txHash timestamp blockNumber
+          user {{ address }}
           data {{
             ... on MarketTransactionLiquidationData {{
-              liquidator repaidAssets seizedAssets badDebtAssets
+              liquidator repaidAssets repaidShares seizedAssets badDebtAssets badDebtShares
             }}
           }}
         }}

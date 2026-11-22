@@ -1,0 +1,150 @@
+{
+  "lookback_days": 730,
+  "event_counts": {
+    "USDC/wstUSR": 1,
+    "USDC/cbBTC": 148,
+    "USDC/RLP": 66,
+    "USDC/WBTC": 239,
+    "USDC/PT-reUSD-10DEC2026": 16,
+    "USDC/AZND": 69,
+    "USDC/PT-RLP-9APR2026": 2,
+    "USDC/USR": 49,
+    "USDC/wstETH": 222,
+    "USDC/wFalconX": 0,
+    "USDC/mF-ONE": 0,
+    "USDC/fxSAVE": 1,
+    "USDC/apyUSD": 73,
+    "USDC/PST": 0,
+    "USDC/USPC": 0
+  },
+  "total_events": 886,
+  "total_left_on_table_usd": 1181254.6303810002,
+  "summaries": {
+    "USDC/wstUSR": {
+      "n_events": 1,
+      "n_insolvent": 0,
+      "profitable_share_dex": null,
+      "profitable_share_mm": 0.0,
+      "total_left_on_table_usd": 0.0,
+      "median_delay_hours": 168,
+      "n_delay_sampled": 1,
+      "n_delay_found": 1,
+      "walk_away_gas_multiplier": 1
+    },
+    "USDC/cbBTC": {
+      "n_events": 148,
+      "n_insolvent": 1,
+      "profitable_share_dex": 0.6148648648648649,
+      "profitable_share_mm": 0.6418918918918919,
+      "total_left_on_table_usd": 0.002121,
+      "median_delay_hours": 0.0,
+      "n_delay_sampled": 30,
+      "n_delay_found": 30,
+      "walk_away_gas_multiplier": 8
+    },
+    "USDC/RLP": {
+      "n_events": 66,
+      "n_insolvent": 1,
+      "profitable_share_dex": null,
+      "profitable_share_mm": 0.45454545454545453,
+      "total_left_on_table_usd": 1181253.92643,
+      "median_delay_hours": 168,
+      "n_delay_sampled": 30,
+      "n_delay_found": 29,
+      "walk_away_gas_multiplier": 1
+    },
+    "USDC/WBTC": {
+      "n_events": 239,
+      "n_insolvent": 8,
+      "profitable_share_dex": 0.602510460251046,
+      "profitable_share_mm": 0.6234309623430963,
+      "total_left_on_table_usd": 0.038481,
+      "median_delay_hours": 0.0,
+      "n_delay_sampled": 30,
+      "n_delay_found": 30,
+      "walk_away_gas_multiplier": 3
+    },
+    "USDC/PT-reUSD-10DEC2026": {
+      "n_events": 16,
+      "n_insolvent": 0,
+      "profitable_share_dex": null,
+      "profitable_share_mm": 1.0,
+      "total_left_on_table_usd": 0.0,
+      "median_delay_hours": 0.0,
+      "n_delay_sampled": 16,
+      "n_delay_found": 16,
+      "walk_away_gas_multiplier": null
+    },
+    "USDC/AZND": {
+      "n_events": 69,
+      "n_insolvent": 0,
+      "profitable_share_dex": null,
+      "profitable_share_mm": 0.8840579710144928,
+      "total_left_on_table_usd": 0.0,
+      "median_delay_hours": 168.0,
+      "n_delay_sampled": 30,
+      "n_delay_found": 30,
+      "walk_away_gas_multiplier": null
+    },
+    "USDC/PT-RLP-9APR2026": {
+      "n_events": 2,
+      "n_insolvent": 1,
+      "profitable_share_dex": null,
+      "profitable_share_mm": 0.5,
+      "total_left_on_table_usd": 0.640588,
+      "median_delay_hours": 168,
+      "n_delay_sampled": 2,
+      "n_delay_found": 1,
+      "walk_away_gas_multiplier": 1
+    },
+    "USDC/USR": {
+      "n_events": 49,
+      "n_insolvent": 0,
+      "profitable_share_dex": 0.0,
+      "profitable_share_mm": 0.16326530612244897,
+      "total_left_on_table_usd": 0.0,
+      "median_delay_hours": 168,
+      "n_delay_sampled": 30,
+      "n_delay_found": 23,
+      "walk_away_gas_multiplier": 1
+    },
+    "USDC/wstETH": {
+      "n_events": 222,
+      "n_insolvent": 7,
+      "profitable_share_dex": 0.5945945945945946,
+      "profitable_share_mm": 0.5765765765765766,
+      "total_left_on_table_usd": 0.022761,
+      "median_delay_hours": 0.0,
+      "n_delay_sampled": 30,
+      "n_delay_found": 30,
+      "walk_away_gas_multiplier": 5
+    },
+    "USDC/fxSAVE": {
+      "n_events": 1,
+      "n_insolvent": 0,
+      "profitable_share_dex": null,
+      "profitable_share_mm": 1.0,
+      "total_left_on_table_usd": 0.0,
+      "median_delay_hours": 0,
+      "n_delay_sampled": 1,
+      "n_delay_found": 1,
+      "walk_away_gas_multiplier": null
+    },
+    "USDC/apyUSD": {
+      "n_events": 73,
+      "n_insolvent": 0,
+      "profitable_share_dex": null,
+      "profitable_share_mm": 0.9315068493150684,
+      "total_left_on_table_usd": 0.0,
+      "median_delay_hours": 0.0,
+      "n_delay_sampled": 30,
+      "n_delay_found": 30,
+      "walk_away_gas_multiplier": null
+    }
+  },
+  "figures": [
+    "reports\\figures\\fig7_liq_edge_profitability.png",
+    "reports\\figures\\fig8_liq_edge_delay.png",
+    "reports\\figures\\fig9_liq_edge_left_on_table.png"
+  ]
+}

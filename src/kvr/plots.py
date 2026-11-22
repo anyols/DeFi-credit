@@ -160,3 +160,54 @@ def plot_stream_case(comparison, name="fig6_stream_case.png"):
     ax.set_xticklabels(labels, rotation=20, ha="right")
     ax.grid(alpha=0.3)
     return _save(fig, name)
+
+
+def plot_liq_edge_profitability(summaries, name="fig7_liq_edge_profitability.png"):
+    """Task 4. summaries: {label: {"profitable_share_dex":.., "profitable_share_mm":..}}."""
+    labels = [l for l, s in summaries.items() if s["profitable_share_dex"] is not None or s["profitable_share_mm"] is not None]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    if labels:
+        x = np.arange(len(labels))
+        width = 0.35
+        ax.bar(x - width / 2, [(summaries[l]["profitable_share_dex"] or 0) * 100 for l in labels], width, label="DEX execution")
+        ax.bar(x + width / 2, [(summaries[l]["profitable_share_mm"] or 0) * 100 for l in labels], width, label="MM execution (assumed spread)")
+        ax.set_xticks(x)
+        ax.set_xticklabels(labels, rotation=20, ha="right")
+    ax.set_ylabel("Profitable share of real liquidations (%)")
+    ax.set_title("Liquidator profitability over the real sample, DEX vs assumed MM execution")
+    ax.legend()
+    ax.grid(alpha=0.3)
+    return _save(fig, name)
+
+
+def plot_liq_edge_delay(delay_samples_by_market, sample_cap, name="fig8_liq_edge_delay.png"):
+    """Task 4. delay_samples_by_market: {label: [hours_or_None, ...]} (a bounded sample per
+    market, see config.LIQ_EDGE_DELAY_SAMPLE_PER_MARKET -- sample_cap is only for the title)."""
+    data, labels = [], []
+    for label, samples in delay_samples_by_market.items():
+        valid = [d for d in samples if d is not None]
+        if valid:
+            data.append(valid)
+            labels.append(label)
+    fig, ax = plt.subplots(figsize=(8, 5))
+    if data:
+        ax.boxplot(data, tick_labels=labels)
+    ax.set_ylabel("Hours between oracle breach and actual liquidation")
+    ax.set_title(f"Delay to liquidation (sampled, up to {sample_cap}/market)")
+    ax.tick_params(axis="x", rotation=20)
+    ax.grid(alpha=0.3)
+    return _save(fig, name)
+
+
+def plot_liq_edge_left_on_table(summaries, name="fig9_liq_edge_left_on_table.png"):
+    """Task 4. summaries: {label: {"total_left_on_table_usd":..}} -- ground-truth badDebtAssets
+    summed over the real sample, not a modeled estimate."""
+    labels = list(summaries.keys())
+    left = [summaries[l]["total_left_on_table_usd"] for l in labels]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(labels, left)
+    ax.set_ylabel("Left on the table -- unrecovered bad debt (USD)")
+    ax.set_title("Bad debt realized per collateral, last 24 months")
+    ax.tick_params(axis="x", rotation=20)
+    ax.grid(alpha=0.3)
+    return _save(fig, name)

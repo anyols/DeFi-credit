@@ -75,6 +75,29 @@ PATH_STEPS = (1, 6)  # 1 = gap, 6 = gradual
 # drawdowns, without needing an aggregator API key.
 PRICE_HISTORY_CHUNKS = 5
 
+# Task 4 (liq_edge.py): "when do liquidators walk away, and who gets paid". 24 months, named
+# rather than hardcoded. The cheap per-event metrics (gas cost, DEX-vs-MM profitability,
+# insolvency, left-on-the-table) run over every event in the window; only the EXPENSIVE
+# per-event reconstruction (hourly oracle sampling to find when a position first breached,
+# below) is capped per market -- found by hand that the full 24-month universe has 886 real
+# Liquidate events, and reconstructing all of them at ~15 oracle reads each (see
+# LIQ_EDGE_MAX_DELAY_HOURS) would take well over an hour of RPC round trips for a number this
+# project already gets from a bounded, labeled sample -- the same sampling precedent as T4's own
+# "replay the last 50 liquidations", not an exhaustive claim.
+LIQ_EDGE_LOOKBACK_DAYS = 730
+LIQ_EDGE_DELAY_SAMPLE_PER_MARKET = 30
+# How far back (in hours) the delay-to-liquidation search looks for the oracle price first
+# crossing a position's breakeven price, via exponential-backoff + binary refine (not a linear
+# hourly scan -- O(log) reads, not O(hours)). A breach further back than this is reported as
+# "predates window", not a fabricated number past what was actually searched.
+LIQ_EDGE_MAX_DELAY_HOURS = 168
+LIQ_EDGE_BLOCKS_PER_HOUR = 300  # ~12s/block on Ethereum mainnet -- an approximation, labeled
+# No real OTC/market-maker quote source exists for this project's scope -- modeled as a fixed
+# spread off the oracle mid-price with zero size-dependent slippage, vs the DEX side's own
+# fitted, size-dependent slippage curve. An assumption, not a measurement.
+LIQ_EDGE_MM_SPREAD_BPS = 10
+WETH_COIN = "ethereum:0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"  # for gas cost in USD only
+
 # Max allowed deviation (in days) between a return window's actual elapsed time and its nominal
 # horizon_days, before that window is dropped from exceedance_frequency rather than silently
 # treated as a clean N-day return. Found by hand while checking whether 2020-03-12 was captured
