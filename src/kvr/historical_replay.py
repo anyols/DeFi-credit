@@ -85,7 +85,7 @@ def withdraw(have, want, available, gas):
     return amount if amount > gas else 0.0
 
 
-def accrue(positions, histories, bad_debt, day):
+def accrue(positions, histories, bad_debt, day, *, flows=None):
     missing = 0
     for mid, claim in positions.items():
         record = histories[mid].get(day)
@@ -94,6 +94,7 @@ def accrue(positions, histories, bad_debt, day):
             positions[mid] += backtest.income_with_dilution(claim, supply, borrow, record["rateAtTarget"])
         else:
             missing += 1
+        accrued_claim = positions[mid]
         loss = bad_debt[mid].get(day, 0)
         if loss:
             if record is None or "supplyAssets" not in record:
@@ -104,6 +105,8 @@ def accrue(positions, histories, bad_debt, day):
                 positions[mid] *= 1 - min(1, loss / base)
             else:
                 positions[mid] = 0
+        if flows is not None:
+            flows[mid] = (accrued_claim - claim, accrued_claim - positions[mid])
     return missing
 
 
@@ -130,7 +133,7 @@ def rebalance(positions, cash, histories, day, selected, gas):
     return cash, trades
 
 
-def valuation(positions, cash, histories, day, gas):
+def valuation(positions, cash, histories, day, gas, *, settlements=None):
     proceeds, stranded = cash, 0.0
     residual = {}
     collateral_covered_claim = 0.0
@@ -140,6 +143,7 @@ def valuation(positions, cash, histories, day, gas):
         available = liquidity(record)
         amount = withdraw(claim, 0, available, gas)
         proceeds += amount - gas if amount else 0
+        covered = 0.0
         if claim > amount:
             residual[mid] = claim - amount
             stranded += residual[mid]
@@ -148,7 +152,13 @@ def valuation(positions, cash, histories, day, gas):
             if collateral is None or borrow <= 0:
                 unpriced_claim += residual[mid]
             else:
-                collateral_covered_claim += residual[mid] * min(1, max(0, collateral) / borrow)
+                covered = residual[mid] * min(1, max(0, collateral) / borrow)
+                collateral_covered_claim += covered
+        if settlements is not None:
+            settlements[mid] = {
+                "withdrawn": amount, "gas": gas if amount else 0.0,
+                "residual": claim - amount, "covered": covered,
+            }
     return {
         "reported_usd": cash + sum(positions.values()),
         "cash_after_exit_usd": proceeds, "residual_claim_usd": stranded,

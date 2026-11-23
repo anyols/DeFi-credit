@@ -10,7 +10,7 @@ Can higher USDC lending yields compensate for the risk of getting stuck? I studi
 - **Reported balances can overstate what lenders can access.** Five illiquid markets showed $1.22B in supply claims and about 161 USDC in immediate withdrawal liquidity at the snapshot.
 - **Liquidation incentives depend on the exit.** In the WBTC, cbBTC and wstETH markets, 97.4% to 99.6% of priced non-dust repayment volume had positive modeled P&L. In RLP, Morpho recorded $1.18M in bad debt.
 
-In a separate six-month evaluation, a [liquidity-adjusted spread rule](data/processed/spread_replay.json) improved modeled exit cash over the liquidity screen. It still trailed Aave on recovery-adjusted equity.
+In a separate six-month evaluation, a liquidity-adjusted spread rule improved modeled exit cash over the liquidity screen. It still trailed Aave on recovery-adjusted equity. [Read the strategy audit](reports/strategy_validation.md).
 
 ## Run locally
 

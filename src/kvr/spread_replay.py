@@ -54,7 +54,8 @@ def entry_order(signals):
 
 def select_spread(positions, signals):
     # Keep an eligible incumbent once the entry costs are sunk.
-    holds = sorted(mid for mid in positions if signals.get(mid, {}).get("gross_spread_usd", 0) > 0)
+    holds = sorted(mid for mid, claim in positions.items()
+                   if claim > 0 and signals.get(mid, {}).get("gross_spread_usd", 0) > 0)
     entries = [mid for mid, _ in entry_order(signals) if mid not in holds]
     return (holds + entries)[:config.BACKTEST_TOP_K]
 
@@ -108,13 +109,16 @@ def rotate(positions, cash, aave_claim, histories, day, selected, sleeve, gas, a
     return cash, aave_claim, amounts
 
 
-def terminal_value(positions, cash, aave_claim, histories, day, gas, aave_capacity):
+def terminal_value(positions, cash, aave_claim, histories, day, gas, aave_capacity, *, settlements=None):
     draw = replay.withdraw(aave_claim, 0, aave_capacity, gas)
-    row = replay.valuation(positions, cash + (draw - gas if draw else 0), histories, day, gas)
+    row = replay.valuation(positions, cash + (draw - gas if draw else 0), histories, day, gas,
+                           settlements=settlements)
     remainder = aave_claim - draw
     row["reported_usd"] += aave_claim - (draw - gas if draw else 0)
     row["aave_residual_usd"] = remainder
     row["residual_claim_usd"] += remainder
+    if settlements is not None:
+        settlements["AAVE"] = {"withdrawn": draw, "gas": gas if draw else 0.0, "residual": remainder}
     for case in replay.RECOVERY:
         row["equity_by_recovery_pct_usd"][str(case)] += remainder
     return row
@@ -143,14 +147,18 @@ def rebalance_plan(name, positions, day, histories, repayments, aave, sleeve, mi
 
 
 def simulate(histories, repayments, losses, aave, start, end, aum, cadence, min_free, gas, capacity,
-             *, name=SPREAD):
+             *, name=SPREAD, audit=None):
     cash, aave_claim, positions, amounts = 0.0, aum - gas, {}, [aum - gas]
     sleeve = aum / config.BACKTEST_TOP_K
     peak, drawdown = aum, 0.0
     path, decisions, wanted = [], [], []
+    if audit is not None:
+        audit.update(initial_gas=gas, rebalances=[], days=[], settlements={})
     for day in range(start, end, DAY):
         if (day - start) % (cadence * DAY) == 0:
-            before = dict(positions)
+            before = {mid: claim for mid, claim in positions.items() if claim > 0}
+            if audit is not None:
+                nominal_before = cash + aave_claim + sum(positions.values())
             wanted, funding, signals = rebalance_plan(
                 name, positions, day, histories, repayments, aave, sleeve, min_free, cadence, gas
             )
@@ -164,8 +172,20 @@ def simulate(histories, repayments, losses, aave, start, end, aum, cadence, min_
             amounts.extend(trades)
             if name == SPREAD:
                 decisions.append((day, before, wanted, signals, fills, dict(positions)))
-        replay.accrue(positions, histories, losses, day)
+            if audit is not None:
+                audit["rebalances"].append({
+                    "day": day, "targets": wanted, "fills": fills, "actions": len(trades),
+                    "nominal_before": nominal_before, "nominal_after": cash + aave_claim + sum(positions.values()),
+                })
+        flows = {} if audit is not None else None
+        missing = replay.accrue(positions, histories, losses, day, flows=flows)
+        aave_before = aave_claim
         aave_claim *= (1 + aave[day]) ** (1 / 365)
+        if audit is not None:
+            audit["days"].append({
+                "day": day, "morpho": flows, "aave_interest": aave_claim - aave_before,
+                "missing_morpho_rates": missing,
+            })
         marked = terminal_value(positions, cash, aave_claim, histories, day + DAY, gas, capacity)
         equity = marked["equity_by_recovery_pct_usd"]["50"]
         peak = max(peak, equity)
@@ -187,7 +207,8 @@ def simulate(histories, repayments, losses, aave, start, end, aum, cadence, min_
                      "exit_requested_claim_usd": trapped,
                      "distressed_claim_usd": distressed,
                      "exit_requested_fraction": trapped / nominal if nominal else 0})
-    row = terminal_value(positions, cash, aave_claim, histories, end, gas, capacity)
+    row = terminal_value(positions, cash, aave_claim, histories, end, gas, capacity,
+                         settlements=audit["settlements"] if audit is not None else None)
     row.update(gross_rebalance_turnover_usd=sum(amounts), rebalance_transactions=len(amounts),
                max_drawdown_at_50pct_recovery=drawdown,
                mean_aave_fraction=sum(p["aave_fraction"] for p in path) / len(path),
@@ -226,7 +247,7 @@ def worked_decisions(decisions, markets, histories, repayments, min_free, termin
     return found
 
 
-def run(data, *, aum=None, cadence=None, min_free=None, aave_capacity=None, include_paths=True):
+def run(data, *, aum=None, cadence=None, min_free=None, aave_capacity=None, include_paths=True, audit=None):
     """Compare on the final 183 days with fixed rules and identical execution conventions."""
     start, end = data["end"] - EVALUATION_DAYS * DAY, data["end"]
     aum = config.BACKTEST_AUM_USD if aum is None else aum
@@ -247,7 +268,8 @@ def run(data, *, aum=None, cadence=None, min_free=None, aave_capacity=None, incl
     table, paths, examples = {}, {}, {}
     for name in (*replay.STRATEGIES, "AAVE", SPREAD):
         row, path, decisions = simulate(histories, repayments, losses, aave, start, end,
-                                        aum, cadence, min_free, gas, capacity, name=name)
+                                        aum, cadence, min_free, gas, capacity, name=name,
+                                        audit=audit.setdefault(name, {}) if audit is not None else None)
         table[name] = row
         if include_paths:
             paths[name] = path

@@ -1,6 +1,12 @@
+import gzip
+import json
+from math import prod
+from pathlib import Path
+
 import pytest
 
 from kvr import historical_replay as replay, spread_replay as spread
+from reports.audit_spread_replay import reconcile
 
 
 def test_spread_uses_lagged_aave_and_requires_coverage_and_net_carry():
@@ -51,6 +57,14 @@ def test_hold_hurdle_is_lower_than_entry_and_failed_gate_forces_exit():
     assert spread.select_spread({"held": 1, "failed": 1}, signals) == ["held", "new"]
 
 
+def test_written_off_position_must_pass_entry_hurdle_again():
+    signals = {"written_off": {"gross_spread_usd": 50, "net_spread_usd": -150},
+               "new": {"gross_spread_usd": 250, "net_spread_usd": 50}}
+    assert spread.select_spread({"written_off": 0}, signals) == ["new"]
+    signals["written_off"]["net_spread_usd"] = 25
+    assert spread.select_spread({"written_off": 0}, signals) == ["new", "written_off"]
+
+
 def test_rotation_cannot_sell_more_than_opening_morpho_liquidity():
     positions = {"M": 1000}
     markets = {"M": {0: {"supplyAssets": 10_000_000_000, "borrowAssets": 9_700_000_000}}}
@@ -67,3 +81,24 @@ def test_partial_fills_below_cost_hurdle_do_not_trigger_aave_withdrawal():
         minimum_fills={"M": 750},
     )
     assert positions == {} and amounts == [] and cash == 0 and aave == 10_000
+
+
+def test_reference_audit_reconciles_published_cash_and_recovery_equity():
+    data_dir = Path(__file__).resolve().parents[1] / "data" / "processed"
+    with gzip.open(data_dir / "demo_replay.json.gz", "rt", encoding="utf-8") as source:
+        inputs = json.load(source)
+    saved = json.loads((data_dir / "spread_replay.json").read_text(encoding="utf-8"))
+    audit = {}
+    case = spread.run(inputs, audit=audit)
+    assert case == saved["base"]
+    capital = case["starting_capital_usd"]
+    bridges = {name: reconcile(result, audit[name], capital)[0] for name, result in case["table"].items()}
+    reference = bridges["LIQUIDITY_SCREEN"]
+    bridge = bridges[spread.SPREAD]
+    assert sum(bridge[key] - reference[key] for key in bridge) == pytest.approx(670_810.09, abs=0.01, rel=0)
+    assert bridges["AAVE"]["gas_before_exit"] == bridges["AAVE"]["terminal_exit_gas"] == -50
+    calendar = range(inputs["end"] - 183 * replay.DAY, inputs["end"], replay.DAY)
+    growth = prod((1 + inputs["aave"][str(day)]) ** (1 / 365) for day in calendar)
+    assert case["table"]["AAVE"]["cash_after_exit_usd"] == pytest.approx(
+        (capital - 50) * growth - 50, abs=0.01, rel=0
+    )
