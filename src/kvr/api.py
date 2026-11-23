@@ -198,8 +198,7 @@ def get_last_transaction(market_unique_key, tx_type, before_timestamp=None):
 def get_market_transfers(market_unique_key, tx_type, before_timestamp=None, since_timestamp=None):
     """All Supply/Withdraw/Borrow/Repay transactions for a market (type_in: [tx_type]), with
     their assets/shares -- MarketTransactionTransferData, the same union member all four share
-    (verified by schema introspection). Used by spread.zombie_principal to separate a zombie
-    market's real lender principal from accrued interest. Most callers want
+    (verified by schema introspection). Most callers want
     get_market_transfers_chunked instead -- a sufficiently active market has more events than
     the API's own skip<=10000 pagination ceiling allows in one unbounded call (found by hand on
     RLP: over 10,000 Supply/Withdraw events).

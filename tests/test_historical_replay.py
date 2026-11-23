@@ -1,4 +1,9 @@
 """Regression checks for information timing and recoverable equity."""
+import gzip
+import json
+import math
+from pathlib import Path
+
 import pytest
 
 from kvr import historical_replay as replay
@@ -44,4 +49,44 @@ def test_replay_accrues_at_post_deposit_supply_rate_once_and_allocates_loss():
     histories = {"M": {0: snapshot(9_000, 9_000, rate)}}
     replay.accrue(positions, histories, {"M": {0: 100}}, 0)
     interest = 1_000 * 0.9 * rate / 1e18 * replay.DAY
-    assert positions["M"] == pytest.approx(990 + interest)
+    assert positions["M"] == pytest.approx((1_000 + interest) * 0.99)
+
+
+def test_complete_writeoff_leaves_no_claim_or_accrued_interest():
+    positions = {"M": 1_000}
+    histories = {"M": {0: snapshot(9_000, 9_000)}}
+    replay.accrue(positions, histories, {"M": {0: 10_000}}, 0)
+    assert positions["M"] == 0
+
+
+def test_rebalance_conserves_assets_net_of_gas():
+    positions = {"M": 1_000}
+    histories = {"M": {0: snapshot(9_000, 8_700)}, "N": {0: snapshot(9_000, 6_000)}}
+    cash, trades = replay.rebalance(positions, 0, histories, 0, ["N"], 10)
+    assert cash >= 0
+    assert cash + sum(positions.values()) == 1_000 - 10 * len(trades)
+
+
+def test_bundled_replay_reproduces_terminal_values_and_aave_break_even():
+    data = Path(__file__).resolve().parents[1] / "data" / "processed"
+    with gzip.open(data / "demo_replay.json.gz", "rt", encoding="utf-8") as source:
+        inputs = json.load(source)
+    published = json.loads((data / "historical_replay.json").read_text(encoding="utf-8"))
+    result = replay.run(inputs)
+    gas = result["gas_usd_per_action"]
+    assert gas == 50
+    growth = math.prod(
+        (1 + inputs["aave"][str(day)]) ** (1 / 365)
+        for day in range(inputs["start"], inputs["end"], replay.DAY)
+    )
+    aave = (result["starting_capital_usd"] - gas) * growth - gas
+    assert result["table"]["AAVE"]["cash_after_exit_usd"] == pytest.approx(aave, abs=1e-6)
+    for case in replay.RECOVERY:
+        key = str(case)
+        morpho = max(result["table"][name]["equity_by_recovery_pct_usd"][key] for name in replay.STRATEGIES)
+        assert result["aave_exit_fraction_to_match_best_morpho"][key] == pytest.approx(morpho / aave)
+        assert published["aave_exit_fraction_to_match_best_morpho"][key] == pytest.approx(morpho / aave)
+    for name, row in result["table"].items():
+        assert row["equity_by_recovery_pct_usd"] == pytest.approx(
+            published["table"][name]["equity_by_recovery_pct_usd"]
+        )

@@ -35,8 +35,8 @@ def aave_usdc_supply_rate_90d_avg(pool_id=AAVE_USDC_DEFILLAMA_POOL):
         return None
 
 
-def _historical_series(market_id, field, chain_id=1, lookback_days=100):
-    now = int(time.time())
+def _historical_series(market_id, field, chain_id=1, lookback_days=100, end_timestamp=None):
+    now = int(time.time()) if end_timestamp is None else end_timestamp
     start = now - lookback_days * 86400
     q = f"""
     query($id: String!, $chainId: Int!, $start: Int, $end: Int) {{
@@ -53,7 +53,7 @@ def _historical_series(market_id, field, chain_id=1, lookback_days=100):
     # these newest-first, which silently broke consecutive_days_at_utilization_cap's assumption
     # that reversed(values) would walk from most-recent backward (it instead walked oldest-first,
     # since the input was already newest-first) until this sort was added.
-    return sorted(((p["x"], p["y"]) for p in points if p["y"] is not None), key=lambda t: t[0])
+    return sorted(((p["x"], p["y"]) for p in points if p["y"] is not None and p["x"] <= now), key=lambda t: t[0])
 
 
 def _onchain_borrow_rate_and_utilization(market_id, block):
@@ -110,7 +110,7 @@ def utilization_time_at_cap(market_id, chain_id=1, threshold=0.99, lookback_days
     return sum(1 for _ts, v in points if v >= threshold) / len(points) if points else None
 
 
-def consecutive_days_at_utilization_cap(market_id, chain_id=1, threshold=None, max_lookback_days=400):
+def consecutive_days_at_utilization_cap(market_id, chain_id=1, threshold=None, max_lookback_days=400, end_timestamp=None):
     """(days, is_lower_bound). days: walking backward from the most recent observation, how
     long utilization has stayed >= threshold without a break; 0 if the most recent observation
     is already below threshold. is_lower_bound=True means the entire max_lookback_days window
@@ -121,12 +121,16 @@ def consecutive_days_at_utilization_cap(market_id, chain_id=1, threshold=None, m
     check is_lower_bound would under-report days_stuck as if it were exact.
     """
     threshold = threshold if threshold is not None else config.ZOMBIE_UTIL_THRESHOLD
-    points = _historical_series(market_id, "utilization", chain_id, max_lookback_days)
+    points = _historical_series(market_id, "utilization", chain_id, max_lookback_days, end_timestamp)
     days = 0
-    for _ts, v in reversed(points):  # points is ascending (oldest first) -- reversed walks newest first
+    previous = None
+    for ts, v in reversed(points):
+        if previous is not None and previous - ts != 86400:
+            return days, True
         if v < threshold:
             return days, False
         days += 1
+        previous = ts
     return days, (days == len(points) and days > 0)
 
 
@@ -136,7 +140,7 @@ def classify_zombie(market_id, before_timestamp, chain_id=1):
     config.ZOMBIE_MIN_DAYS_SINCE_REPAY days. Returns a dict with the fields the memo needs
     (days_stuck, last_repay_date, is_zombie) regardless of the verdict, not just a bool.
     """
-    days_stuck, days_stuck_is_lower_bound = consecutive_days_at_utilization_cap(market_id, chain_id)
+    days_stuck, days_stuck_is_lower_bound = consecutive_days_at_utilization_cap(market_id, chain_id, end_timestamp=before_timestamp)
     last_repay = api.get_last_transaction(market_id, "Repay", before_timestamp=before_timestamp)
     if last_repay is None:
         days_since_repay = None  # never repaid at all -- at least as stuck as any finite count
@@ -154,41 +158,24 @@ def classify_zombie(market_id, before_timestamp, chain_id=1):
     }
 
 
-def zombie_principal(market_id, before_timestamp, chain_id=1, max_lookback_days=400):
-    """Memo review: a zombie market's reported totalSupplyAssets (what build_report.py sums into
-    "zombie supply") is NOT the same thing as what lenders actually put in -- ~800%/yr accrues
-    continuously on debt nobody repays, inflating the supply-side balance lenders are owed well
-    past their real deposits. Decomposes it into net lender principal (sum(Supply) - sum(Withdraw)
-    from real transfer events, in USD) and the remainder (accrued interest), plus the borrowed
-    amount as of the FIRST day utilization crossed the zombie threshold -- the same historical
-    series classify_zombie's own days_stuck already walks, read at that specific point instead of
-    only counting days.
-    """
-    since_floor = before_timestamp - config.ZOMBIE_PRINCIPAL_LOOKBACK_DAYS * 86400
-    supplies = api.get_market_transfers_chunked(market_id, "Supply", since_floor, before_timestamp)
-    withdraws = api.get_market_transfers_chunked(market_id, "Withdraw", since_floor, before_timestamp)
-    sum_supplied = sum(int(t["data"]["assets"]) for t in supplies if t.get("data"))
-    sum_withdrawn = sum(int(t["data"]["assets"]) for t in withdraws if t.get("data"))
-    net_principal = sum_supplied - sum_withdrawn
-
-    days_stuck, is_lower_bound = consecutive_days_at_utilization_cap(market_id, chain_id, max_lookback_days=max_lookback_days)
-    util_points = _historical_series(market_id, "utilization", chain_id, max_lookback_days)
-    borrow_points = _historical_series(market_id, "borrowAssetsUsd", chain_id, max_lookback_days)
-    stuck_since_date, borrow_usd_at_stuck_date = None, None
-    if 0 < days_stuck <= len(util_points):
-        stuck_ts = util_points[len(util_points) - days_stuck][0]
-        stuck_since_date = dt.datetime.fromtimestamp(stuck_ts, tz=dt.timezone.utc).date().isoformat()
-        if borrow_points:
-            borrow_usd_at_stuck_date = min(borrow_points, key=lambda p: abs(p[0] - stuck_ts))[1]
-
+def zombie_market_balances(market_id, before_timestamp, supply_assets, borrow_assets, days_stuck,
+                           chain_id=1, max_lookback_days=400):
+    """Snapshot claims and free liquidity, plus debt at the start of the observed streak."""
+    points = _historical_series(market_id, "utilization", chain_id, max_lookback_days, before_timestamp)
+    first = points[-days_stuck][0] if 0 < days_stuck <= len(points) else None
+    borrow_at_start = None
+    if first is not None:
+        debts = dict(_historical_series(market_id, "borrowAssets", chain_id, max_lookback_days, before_timestamp))
+        if first in debts:
+            borrow_at_start = int(debts[first]) / 1e6
     return {
-        "sum_supplied_usd": sum_supplied / 1e6,
-        "sum_withdrawn_usd": sum_withdrawn / 1e6,
-        "net_principal_usd": net_principal / 1e6,
-        "days_stuck": days_stuck,
-        "days_stuck_is_lower_bound": is_lower_bound,
-        "stuck_since_date": stuck_since_date,
-        "borrow_usd_at_stuck_date": borrow_usd_at_stuck_date,
+        "supply_usd": supply_assets / 1e6,
+        "borrow_usd": borrow_assets / 1e6,
+        "available_withdrawal_usd": max(0, supply_assets - borrow_assets) / 1e6,
+        "utilization": borrow_assets / supply_assets if supply_assets else None,
+        "observed_streak_start": dt.datetime.fromtimestamp(first, tz=dt.timezone.utc).date().isoformat()
+        if first is not None else None,
+        "borrow_usd_at_streak_start": borrow_at_start,
     }
 
 

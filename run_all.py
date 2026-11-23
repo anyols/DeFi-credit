@@ -1,7 +1,3 @@
-"""One command reproduces everything. Currently covers M1 (universe) and M2 (positions);
-later stages are added as their modules land (see SPEC.md section 7).
-"""
-
 import sys
 from pathlib import Path
 

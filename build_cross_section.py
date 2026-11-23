@@ -1,9 +1,3 @@
-"""M10 cross-section: all Ethereum USDC markets with supply > $1M. Separate from build_report.py
-because this pulls a much wider, slower-changing universe (66 markets at time of writing) that
-doesn't need re-pulling every time the main universe's top config.TOP_N_MARKETS markets are
-re-analyzed.
-"""
-
 import json
 import sys
 import time

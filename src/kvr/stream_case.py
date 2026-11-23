@@ -8,8 +8,13 @@ Arbitrum's public RPC -- a separate, ad hoc path from chain.py's Ethereum-only c
 reusing chain.py's pure ABI encode/decode helpers since those are chain-agnostic.
 """
 
-from web3 import Web3
+import os
 
+from web3 import Web3
+from web3.exceptions import Web3RPCError
+from requests.exceptions import RequestException
+
+import config
 from . import api, chain, oracle
 
 ARBITRUM_RPC = "https://arb1.arbitrum.io/rpc"
@@ -22,7 +27,7 @@ _arb_w3 = None
 def arb_w3():
     global _arb_w3
     if _arb_w3 is None:
-        _arb_w3 = Web3(Web3.HTTPProvider(ARBITRUM_RPC))
+        _arb_w3 = Web3(Web3.HTTPProvider(os.getenv("ARBITRUM_RPC_URL", ARBITRUM_RPC)))
     return _arb_w3
 
 
@@ -76,10 +81,13 @@ def classify_oracle_arbitrum(oracle_address, block):
 
 
 def concentration_metrics(market_id):
-    """Top-1/top-5 borrower share of debt and HHI, from current API-indexed positions (a
-    snapshot proxy, not a true point-in-time-at-2025-11-02 read -- see module docstring)."""
+    """Retrospective concentration from current indexed debt balances."""
     positions = api.get_market_positions(market_id, borrowers_only=True)
-    debts = sorted((int(p["state"]["borrowAssets"]) for p in positions if p["state"]["borrowAssets"]), reverse=True)
+    return _concentration(int(p["state"]["borrowAssets"] or 0) for p in positions)
+
+
+def _concentration(exposures):
+    debts = sorted((x for x in exposures if x > 0), reverse=True)
     total = sum(debts)
     if total == 0 or not debts:
         return {"n_borrowers": len(debts), "top1_share": None, "top5_share": None, "hhi": None}
@@ -91,6 +99,46 @@ def concentration_metrics(market_id):
         "top5_share": sum(shares[:5]),
         "hhi": hhi,
     }
+
+
+def historical_concentration(market_id, block, timestamp):
+    """Discover historical Borrow recipients and reconcile all shares at one block."""
+    query = """
+    query($id: String!, $end: Int!, $first: Int!, $skip: Int!) {
+      marketTransactions(first: $first, skip: $skip, where: {
+        chainId_in:[42161], marketUniqueKey_in:[$id], type_in:[Borrow], timestamp_lte:$end
+      }) {
+        items { blockNumber user { address } }
+        pageInfo { countTotal }
+      }
+    }
+    """
+    mid = bytes.fromhex(market_id[2:])
+    _, _, _, market_shares, _, _ = arb_call(config.MORPHO_BLUE, "market", [mid], block)
+    events = api._paginate(query, {"id": market_id, "end": timestamp}, "marketTransactions")
+    users = {Web3.to_checksum_address(event["user"]["address"])
+             for event in events if event["blockNumber"] <= block}
+    shares = [arb_call(config.MORPHO_BLUE, "position", [mid, user], block)[1] for user in sorted(users)]
+    if sum(shares) != market_shares:
+        raise ValueError("Historical positions do not reconcile to market borrow shares")
+    return {**_concentration(shares), "borrow_shares_reconciled": str(market_shares)}
+
+
+def case_study():
+    block = find_block_by_timestamp(PRE_ANNOUNCEMENT_TIMESTAMP)
+    timestamp = arb_w3().eth.get_block(block)["timestamp"]
+    try:
+        concentration = historical_concentration(XUSD_MARKET_ID, block, timestamp)
+    except (Web3RPCError, RequestException, ValueError):
+        return {"evidence": "retrospective_only", "reference_block": block,
+                "historical_concentration": None, "historical_oracle_class": None,
+                "retrospective_concentration": concentration_metrics(XUSD_MARKET_ID),
+                "retrospective_debt": realized_bad_debt(XUSD_MARKET_ID)}
+    oracle_address = "0x1837efFC34Bb5a96EFdA00d53560799bE3a4226E"
+    return {"evidence": "historical_concentration", "reference_block": block,
+            "historical_concentration": concentration,
+            "historical_oracle_class": classify_oracle_arbitrum(oracle_address, block)["class"],
+            "retrospective_debt": realized_bad_debt(XUSD_MARKET_ID)}
 
 
 def realized_bad_debt(market_id, chain_id=42161):

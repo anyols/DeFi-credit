@@ -1,8 +1,7 @@
-"""Task 6 (new module): lending strategies across Ethereum Morpho USDC markets, last
-config.BACKTEST_LOOKBACK_DAYS (~18 months), no survivorship bias -- the universe includes
-markets that later became zombies (see spread.classify_zombie) and any market that had a
-Stream/xUSD-style collapse, as long as it still shows meaningful current state (see
-config.BACKTEST_MIN_SUPPLY_USD's own docstring for the labeled residual bias this leaves).
+"""Shared rate math and the exploratory Ethereum Morpho USDC comparison.
+
+The exploratory universe uses current supply and its static exit filters use the
+snapshot or live quotes. Use historical_replay for the lagged strategy comparison.
 
 Rates are read from the on-chain IRM (historical rateAtTarget + utilization -> irm.borrow_rate),
 never the API's own APY fields, matching this project's rule everywhere else.
@@ -133,9 +132,7 @@ def income_with_dilution(x_usd, supply_usd, borrow_usd, rate_at_target_raw, fee_
     rate_ps = daily_rate_per_second(u, rate_at_target_raw, fee_frac)
     if rate_ps is None:
         return 0.0
-    total_daily_interest = borrow_usd * rate_ps * DAY
-    my_share = x_usd / new_supply
-    return my_share * total_daily_interest
+    return x_usd * rate_ps * DAY
 
 
 def is_zombie_asof(history, end_day, util_threshold=None, lookback_days=None, min_days_at_cap=None):
@@ -226,7 +223,7 @@ def simulate_bench(aave_history, window_start_day, window_end_day, aum_usd=None)
     while day <= window_end_day:
         rate = aave_history.get(day)
         if rate is not None:
-            equity *= 1 + rate / 365
+            equity *= (1 + rate) ** (1 / 365)
         curve.append((day, equity))
         day += DAY
     return {"equity_reported": curve, "equity_marked": curve, "trapped_usd_series": [(d, 0.0) for d, _ in curve], "n_switches": 0}
@@ -399,13 +396,13 @@ def simulate(universe, histories, bad_debt_by_market, strategy_fn, window_start_
                         cash -= gas_usd
                         n_switches += 1
                         trade_log.append({"day": day, "market_id": mid, "action": "exit", "usd": withdrawable})
-                    if positions[mid] <= 1.0:
+                    if positions[mid] <= 0:
                         del positions[mid]
 
             for mid, want in target_now.items():
                 have = positions.get(mid, 0.0)
                 if want > have + 1e-6:
-                    deploy = min(want - have, max(0.0, cash))
+                    deploy = min(want - have, max(0.0, cash - gas_usd))
                     if deploy > 1e-6:
                         positions[mid] = have + deploy
                         cash -= deploy

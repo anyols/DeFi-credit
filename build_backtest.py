@@ -1,10 +1,3 @@
-"""Task 6: lending strategies across Ethereum Morpho USDC markets, last
-config.BACKTEST_LOOKBACK_DAYS (~18 months), $10M, with real frictions (own-deposit rate impact,
-gas, liquidity-capped withdrawals, pro-rata bad debt, zombie reported-vs-marked valuation).
-BENCH (100% Aave) vs NAIVE (top-K by trailing rate) vs RISK_AWARE (NAIVE + point-in-time
-filters) vs REL_VALUE (same-risk-bucket relative value, cost-aware switching).
-"""
-
 import json
 import sys
 from pathlib import Path
@@ -187,6 +180,7 @@ def main():
     ]
 
     out = {
+        "evidence": "exploratory_current_universe_and_snapshot_exit_filters",
         "window_start_day": window_start_day,
         "window_end_day": window_end_day,
         "n_markets": len(universe),

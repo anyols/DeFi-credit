@@ -1,7 +1,3 @@
-"""Task 7: "Deploy USDC as a lender, or run the ETH basis trade?" A comparison, not a strategy
-recommendation -- see basis.py's own module docstring. Reuses backtest.py's window, universe
-discovery, and wstETH/USDC Morpho market data.
-"""
 
 import json
 import sys

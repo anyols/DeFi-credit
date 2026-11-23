@@ -1,4 +1,5 @@
 {
+  "evidence": "exploratory_current_universe_and_snapshot_exit_filters",
   "window_start_day": 1747958400,
   "window_end_day": 1795219200,
   "n_markets": 76,
@@ -62,37 +63,37 @@
   ],
   "table": {
     "BENCH": {
-      "ann_return": 0.037296753053440934,
-      "ann_vol": 0.0006337211104201387,
+      "ann_return": 0.03655078471148676,
+      "ann_vol": 0.0005983393439343471,
       "sharpe_vs_bench": null,
       "max_drawdown": 0.0,
       "days_trapped": 0,
       "usd_trapped_at_end": 0.0,
       "n_switches": 0,
-      "final_equity_reported": 10565900.112421969,
-      "final_equity_marked": 10565900.112421969
+      "final_equity_reported": 10554480.425427543,
+      "final_equity_marked": 10554480.425427543
     },
     "NAIVE": {
-      "ann_return": 20.09753195831407,
-      "ann_vol": 0.13414307269135448,
-      "sharpe_vs_bench": 22.650869599449578,
+      "ann_return": 21.449590325645516,
+      "ann_vol": 0.1329719621569623,
+      "sharpe_vs_bench": 23.32639708265186,
       "max_drawdown": 0.0,
       "days_trapped": 541,
-      "usd_trapped_at_end": 939847161.8397179,
-      "n_switches": 274,
-      "final_equity_reported": 970040387.0198437,
-      "final_equity_marked": 1292.8346045006551
+      "usd_trapped_at_end": 1032309783.6305846,
+      "n_switches": 271,
+      "final_equity_reported": 1064790575.6235253,
+      "final_equity_marked": 1382.2320404679235
     },
     "RISK_AWARE": {
-      "ann_return": 0.08070469566250194,
-      "ann_vol": 0.0073980027644465094,
-      "sharpe_vs_bench": 5.57973179390524,
-      "max_drawdown": -2.3356119314366097e-05,
+      "ann_return": 0.11052706392680944,
+      "ann_vol": 0.008289452382303096,
+      "sharpe_vs_bench": 8.364232679228365,
+      "max_drawdown": -1.2314433659454949e-05,
       "days_trapped": 492,
-      "usd_trapped_at_end": 5138005.055708364,
+      "usd_trapped_at_end": 5621282.208001708,
       "n_switches": 403,
-      "final_equity_reported": 11234693.684848372,
-      "final_equity_marked": 8111093.768914973,
+      "final_equity_reported": 11703033.397038149,
+      "final_equity_marked": 8181775.066904984,
       "exclusions": {
         "oracle_class_excluded": 13,
         "no_dex_exit_excluded": 49,
@@ -100,15 +101,15 @@
       }
     },
     "REL_VALUE": {
-      "ann_return": 0.08872846147542801,
-      "ann_vol": 0.007851800045968254,
-      "sharpe_vs_bench": 6.213693608083226,
-      "max_drawdown": -3.70898992632096e-05,
+      "ann_return": 0.11026684193040337,
+      "ann_vol": 0.008247450533925144,
+      "sharpe_vs_bench": 8.392539694802592,
+      "max_drawdown": -2.0992514717765864e-05,
       "days_trapped": 450,
-      "usd_trapped_at_end": 2369059.189825727,
-      "n_switches": 601,
-      "final_equity_reported": 11359959.91763824,
-      "final_equity_marked": 9020380.19291399,
+      "usd_trapped_at_end": 2621028.1169190495,
+      "n_switches": 573,
+      "final_equity_reported": 11698802.273360232,
+      "final_equity_marked": 9106532.56040672,
       "exclusions": {
         "oracle_class_excluded": 13,
         "no_dex_exit_excluded": 49,
@@ -130,50 +131,50 @@
       "n_switched": 2
     }
   },
-  "rel_value_pnl_captured_vs_risk_aware_reported_usd": 125266.23278986849,
-  "rel_value_pnl_captured_vs_risk_aware_marked_usd": 909286.4239990171,
+  "rel_value_pnl_captured_vs_risk_aware_reported_usd": -4231.123677916825,
+  "rel_value_pnl_captured_vs_risk_aware_marked_usd": 924757.4935017359,
   "sensitivity": {
     "K": {
       "3": {
-        "ann_return": 20.742346651891197,
-        "final_equity": 1014870847.0673969
+        "ann_return": 22.13514637052237,
+        "final_equity": 1113957853.2295625
       },
       "5": {
-        "ann_return": 20.09753195831407,
-        "final_equity": 970040387.0198437
+        "ann_return": 21.449590325645516,
+        "final_equity": 1064790575.6235253
       },
       "10": {
-        "ann_return": 19.3876610845665,
-        "final_equity": 921462147.1589426
+        "ann_return": 20.56757911752894,
+        "final_equity": 1002621130.3405523
       }
     },
     "rebalance_days": {
       "1": {
-        "ann_return": 20.112922408408114,
-        "final_equity": 971102275.8643775,
-        "n_switches": 1614
+        "ann_return": 21.470643914871896,
+        "final_equity": 1066289135.5730854,
+        "n_switches": 1609
       },
       "7": {
-        "ann_return": 20.09753195831407,
-        "final_equity": 970040387.0198437,
-        "n_switches": 274
+        "ann_return": 21.449590325645516,
+        "final_equity": 1064790575.6235253,
+        "n_switches": 271
       }
     },
     "switch_threshold_bps": {
       "10": {
-        "ann_return": 0.08860862201027642,
-        "final_equity": 11358083.90629915,
-        "n_switches": 629
+        "ann_return": 0.11011351516955203,
+        "final_equity": 11696378.414536107,
+        "n_switches": 614
       },
       "25": {
-        "ann_return": 0.08872846147542801,
-        "final_equity": 11359959.91763824,
-        "n_switches": 601
+        "ann_return": 0.11026684193040337,
+        "final_equity": 11698802.273360232,
+        "n_switches": 573
       },
       "50": {
-        "ann_return": 0.08888309752779855,
-        "final_equity": 11362380.800309855,
-        "n_switches": 551
+        "ann_return": 0.1104171865571042,
+        "final_equity": 11701179.15189018,
+        "n_switches": 533
       }
     }
   },

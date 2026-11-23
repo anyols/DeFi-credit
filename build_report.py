@@ -1,10 +1,3 @@
-"""Runs M5-M12 against the real universe (data/processed/markets.parquet -- the top
-config.TOP_N_MARKETS USDC markets by supply, per Task 1's scope change) and produces every
-figure + number the memo needs. Separate from run_all.py (which covers the reproducible M1/M2
-pull) because this stage mixes in external data (DEX quotes, DefiLlama history, Aave, a second
-chain for the Stream case) that's slower and noisier to re-pull on every run.
-"""
-
 import datetime as dt
 import json
 import sys
@@ -154,7 +147,7 @@ def main():
             zombies[mid] = {
                 "label": m["label"],
                 "collateral": m["symbol"],
-                "supply_usd": m["supply_assets"] / 1e6,
+                **spread.zombie_market_balances(mid, block_ts, m["supply_assets"], m["borrow_assets"], z["days_stuck"]),
                 "days_stuck": z["days_stuck"],
                 "days_stuck_is_lower_bound": z["days_stuck_is_lower_bound"],
                 "last_repay_date": dt.datetime.fromtimestamp(z["last_repay_timestamp"], tz=dt.timezone.utc).date().isoformat()
@@ -165,6 +158,9 @@ def main():
             }
     results["zombies"] = zombies
     results["zombie_supply_usd_total"] = sum(z["supply_usd"] for z in zombies.values())
+    results["zombie_free_usdc_total"] = sum(z["available_withdrawal_usd"] for z in zombies.values())
+    if zombies:
+        figures.append(plots.plot_zombie_markets(zombies))
     healthy = {mid: m for mid, m in markets.items() if mid not in zombies}
     print(f"{len(zombies)} zombie markets excluded from spreads/optimizer, ${results['zombie_supply_usd_total']:,.0f} total supply")
 
@@ -314,16 +310,7 @@ def main():
     optimal_alloc_1m = optimize.greedy_water_fill(opt_markets, 1_000_000 * 10**6)
     figures.append(plots.plot_capacity_curve(curve, optimal_alloc_1m, labels_order))
 
-    block_nov2 = stream_case.find_block_by_timestamp(stream_case.PRE_ANNOUNCEMENT_TIMESTAMP)
-    xusd_oracle = "0x1837efFC34Bb5a96EFdA00d53560799bE3a4226E"
-    xusd_class = stream_case.classify_oracle_arbitrum(xusd_oracle, block_nov2)["class"]
-    xusd_conc = stream_case.concentration_metrics(stream_case.XUSD_MARKET_ID)
-    xusd_bad_debt = stream_case.realized_bad_debt(stream_case.XUSD_MARKET_ID)
-    results["stream_case"] = {"oracle_class": xusd_class, "concentration": xusd_conc, "realized_bad_debt": xusd_bad_debt, "block_2025_11_02": block_nov2}
-    comparison = {"Arbitrum USDC/xUSD": {"hhi": xusd_conc["hhi"], "oracle_class": xusd_class}}
-    for label, c in results["concentration"].items():
-        comparison[label] = {"hhi": c["hhi"], "oracle_class": results["oracle_class"][label]}
-    figures.append(plots.plot_stream_case(comparison))
+    results["stream_case"] = stream_case.case_study()
 
     results["figures"] = figures
     Path("data/processed/report_results.json").write_text(json.dumps(results, indent=2, default=str))

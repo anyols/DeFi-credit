@@ -92,9 +92,7 @@ def accrue(positions, histories, bad_debt, day):
         record = histories[mid].get(day)
         if usable(record):
             supply, borrow = balances(record)
-            # Supply rate already includes utilization. Multiply by the lender claim once.
-            rate = backtest.daily_rate_per_second(min(borrow / (supply + claim), 1), record["rateAtTarget"])
-            positions[mid] += claim * rate * DAY
+            positions[mid] += backtest.income_with_dilution(claim, supply, borrow, record["rateAtTarget"])
         else:
             missing += 1
         loss = bad_debt[mid].get(day, 0)
@@ -103,7 +101,10 @@ def accrue(positions, histories, bad_debt, day):
                 raise ValueError(f"Missing supply for loss allocation: {mid} at {day}")
             # Assumes the snapshot is pre-loss and the simulated claim is incremental.
             base = record["supplyAssets"] / UNIT + claim
-            positions[mid] = max(0, positions[mid] - loss * claim / base)
+            if base > 0:
+                positions[mid] *= 1 - min(1, loss / base)
+            else:
+                positions[mid] = 0
     return missing
 
 
@@ -163,23 +164,34 @@ def date(day):
     return datetime.fromtimestamp(day, timezone.utc).date().isoformat()
 
 
-def run(data, *, aum=None, rebalance_days=None, min_free_usdc=None):
+def recovery_equity(row, recovery_pct):
+    return row["cash_after_exit_usd"] + recovery_pct / 100 * row["collateral_covered_claim_usd"]
+
+
+def aave_exit_fraction_to_match_best_morpho(table, recovery_pct):
+    """Fraction of post-cost Aave terminal value that ties the best Morpho rule."""
+    best = max(recovery_equity(table[name], recovery_pct) for name in STRATEGIES)
+    return best / table["AAVE"]["cash_after_exit_usd"]
+
+
+def run(data, *, aum=None, rebalance_days=None, min_free_usdc=None, diagnostics=False):
     aum = config.BACKTEST_AUM_USD if aum is None else aum
     rebalance_days = config.BACKTEST_REBALANCE_DAYS if rebalance_days is None else rebalance_days
     min_free_usdc = aum / config.BACKTEST_TOP_K if min_free_usdc is None else min_free_usdc
-    if aum <= 0 or rebalance_days < 1 or min_free_usdc < 0:
-        raise ValueError("Starting capital and cadence must be positive, and liquidity must be nonnegative")
+    gas = config.BACKTEST_GAS_COST_USD
+    if aum <= 2 * gas or rebalance_days < 1 or min_free_usdc < 0:
+        raise ValueError("Capital must cover round-trip gas, cadence must be positive, and liquidity must be nonnegative")
     start, end = data["start"], data["end"]
     histories = {m: {int(d): r for d, r in h.items()} for m, h in data["histories"].items()}
     repayments = {m: pair[0] for m, pair in data["events"].items()}
     losses = {m: {int(d): v for d, v in pair[1].items()} for m, pair in data["events"].items()}
     decisions = {d: candidates(d, histories, repayments, min_free_usdc)
                  for d in range(start, end, rebalance_days * DAY)}
-    gas = config.BACKTEST_GAS_COST_USD
     table, audit = {}, {}
     for name in STRATEGIES:
         cash, positions = aum, {}
         missing = 0
+        peak, drawdown = aum, 0.0
         audit[name] = {}
         for day in range(start, end, DAY):
             if day in decisions:
@@ -187,15 +199,33 @@ def run(data, *, aum=None, rebalance_days=None, min_free_usdc=None):
                 cash, trades = rebalance(positions, cash, histories, day, selected, gas)
                 audit[name][day] = {"selected": selected, "trades_usd": trades}
             missing += accrue(positions, histories, losses, day)
+            if diagnostics:
+                marked = valuation(positions, cash, histories, day + DAY, gas)["equity_by_recovery_pct_usd"]["50"]
+                peak = max(peak, marked)
+                drawdown = min(drawdown, marked / peak - 1)
         table[name] = valuation(positions, cash, histories, end, gas)
         table[name]["terminal_positions_usd"] = positions
         table[name]["held_market_days_without_rate"] = missing
         table[name]["rebalance_transactions"] = sum(len(v["trades_usd"]) for v in audit[name].values())
+        if diagnostics:
+            table[name]["gross_rebalance_turnover_usd"] = sum(
+                abs(amount) for entry in audit[name].values() for amount in entry["trades_usd"].values()
+            )
+            table[name]["max_drawdown_at_50pct_recovery"] = drawdown
     aave = {int(d): r for d, r in data["aave"].items()}
     if any(day not in aave for day in range(start, end, DAY)):
         raise ValueError("Aave daily benchmark history is incomplete")
-    bench = backtest.simulate_bench(aave, start, end - DAY, aum_usd=aum)
-    table["AAVE"] = valuation({}, bench["equity_reported"][-1][1], {}, end, 0)
+    bench = backtest.simulate_bench(aave, start, end - DAY, aum_usd=aum - gas)
+    aave_equity = bench["equity_reported"][-1][1] - gas
+    table["AAVE"] = valuation({}, aave_equity, {}, end, 0)
+    if diagnostics:
+        peak, drawdown = aum, 0.0
+        for _, equity in bench["equity_reported"]:
+            equity -= gas
+            peak = max(peak, equity)
+            drawdown = min(drawdown, equity / peak - 1)
+        table["AAVE"].update(gross_rebalance_turnover_usd=aum - gas, rebalance_transactions=1,
+                             max_drawdown_at_50pct_recovery=drawdown)
     for result in table.values():
         result["pnl_by_recovery_pct_usd"] = {
             p: equity - aum for p, equity in result["equity_by_recovery_pct_usd"].items()
@@ -203,13 +233,17 @@ def run(data, *, aum=None, rebalance_days=None, min_free_usdc=None):
     examples = decision_examples(data["markets"], histories, decisions, audit, table, end)
     rankings = {str(p): sorted(table, key=lambda name: -table[name]["equity_by_recovery_pct_usd"][str(p)])
                 for p in RECOVERY}
+    aave_break_even = {
+        str(p): aave_exit_fraction_to_match_best_morpho(table, p) for p in RECOVERY
+    }
     return {"start": date(start), "terminal_exit": date(end), "snapshot_block": data["snapshot_block"],
             "starting_capital_usd": aum, "min_free_usdc": min_free_usdc,
             "rebalance_days": rebalance_days, "top_k": config.BACKTEST_TOP_K,
             "minimum_lagged_supply_usd": MIN_SUPPLY, "gas_usd_per_action": gas,
             "markets_discovered": data["discovered"], "markets_with_qualifying_history": len(histories),
             "markets_ever_rankable": len({r["market_id"] for rows in decisions.values() for r in rows}),
-            "table": table, "rankings_by_recovery_pct": rankings, "worked_decisions": examples}
+            "table": table, "rankings_by_recovery_pct": rankings,
+            "aave_exit_fraction_to_match_best_morpho": aave_break_even, "worked_decisions": examples}
 
 
 def decision_examples(markets, histories, decisions, audit, table, end):

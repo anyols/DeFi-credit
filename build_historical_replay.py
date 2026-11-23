@@ -1,6 +1,7 @@
 """Fetch dated inputs for the historical replay, or replay a cached snapshot offline."""
 import argparse
 from concurrent.futures import ThreadPoolExecutor
+import gzip
 import json
 from pathlib import Path
 import sys
@@ -8,7 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 import config
-from kvr import api, backtest, chain, historical_replay as replay, stream_case
+from kvr import api, backtest, chain, historical_replay as replay, spread_replay, stream_case
 
 CACHE = Path("data/raw/historical_replay.json")
 OUTPUT = Path("data/processed/historical_replay.json")
@@ -107,7 +108,23 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--refresh", action="store_true", help="Refresh the historical input cache")
     parser.add_argument("--spot-check", action="store_true", help="Check worked-example liquidity against RPC")
+    parser.add_argument("--spread", action="store_true", help="Run the spread comparison offline")
     args = parser.parse_args()
+    if args.spread:
+        if args.refresh or args.spot_check:
+            parser.error("--spread uses bundled inputs and does not take refresh or spot-check options")
+        with gzip.open(OUTPUT.with_name("demo_replay.json.gz"), "rt", encoding="utf-8") as source:
+            data = json.load(source)
+        results = {name: spread_replay.run(data, aave_capacity=cap)
+                   for name, cap in (("base", None), ("aave_capacity_stress", 1_000_000))}
+        results["sensitivity"] = {
+            "fortnightly": spread_replay.run(data, cadence=14, include_paths=False),
+            "higher_liquidity_floor": spread_replay.run(data, min_free=4_000_000, include_paths=False),
+        }
+        OUTPUT.with_name("spread_replay.json").write_text(
+            json.dumps(results, indent=2, allow_nan=False) + "\n", encoding="utf-8"
+        )
+        return
     if args.refresh or not CACHE.exists():
         data = collect()
         CACHE.parent.mkdir(parents=True, exist_ok=True)

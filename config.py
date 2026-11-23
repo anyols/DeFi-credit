@@ -60,12 +60,6 @@ ZOMBIE_UTIL_THRESHOLD = 0.99
 ZOMBIE_MIN_DAYS_STUCK = 30
 ZOMBIE_MIN_DAYS_SINCE_REPAY = 30
 
-# spread.zombie_principal (memo review): how far back to pull a zombie market's full Supply/
-# Withdraw history to compute net lender principal. Morpho Blue's own full history (launched
-# Jan 2024) comfortably fits within this; a market older than that would understate net
-# principal by missing its earliest deposits, which none in this universe are.
-ZOMBIE_PRINCIPAL_LOOKBACK_DAYS = 3 * 365
-
 # M7 scenario grid (see SPEC.md section 4, M7). Exact per-asset buckets are refined in scenarios.py.
 UNDERLYING_SHOCK_RANGE = (-0.60, -0.10, 0.05)  # (min, max, step) on the loan/collateral price ratio
 DEPEG_SHOCK_RANGE = (-0.80, -0.02, 0.02)  # for LST/LRT/yield-stable collateral, depeg-only

@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 import config
-from kvr import basis, historical_replay, scenarios, stress
+from kvr import basis, historical_replay, scenarios, spread_replay, stress
 
 DATA = ROOT / "data" / "processed"
 FIGURES = ROOT / "reports" / "figures"
@@ -64,9 +64,13 @@ def overview():
                     "a repayment screen and a free-liquidity screen with Aave. Aave led at every tested recovery rate.")
         recovery_chart(data, 50)
     elif selection == "Liquidation economics":
-        st.markdown(f"**{data['total_events']} historical liquidations.** Liquid BTC and ETH collateral "
-                    "generally cleared quickly. The chart estimates profitability using modeled exit costs.")
-        st.markdown("The RLP case documents roughly **$1.18M** of realized bad debt on a later liquidation.")
+        st.markdown(f"**{data['total_events']} historical liquidations.** The chart uses execution-block "
+                    "oracle marks, whole-transaction gas and assumed exit charges. Actual sale prices "
+                    "and realized liquidator P&L are unavailable.")
+        report = read_data("report_results.json")
+        st.markdown(f"RLP recorded **{millions(data['rlp_case_study']['bad_debt_usd'])} in bad debt**. "
+                    f"The five persistently illiquid markets had "
+                    f"**{report['zombie_free_usdc_total']:,.0f} USDC in free liquidity** at the snapshot.")
     elif selection == "Relative value":
         difference = data["rel_value_pnl_captured_vs_risk_aware_marked_usd"]
         st.markdown(f"**{millions(difference)} higher marked equity** versus risk-aware in the exploratory run. "
@@ -88,7 +92,7 @@ def replay_rows(result, recovery):
     rows = []
     for key, label in NAMES.items():
         row = result["table"][key]
-        equity = row["cash_after_exit_usd"] + recovery / 100 * row["collateral_covered_claim_usd"]
+        equity = historical_replay.recovery_equity(row, recovery)
         rows.append({
             "Strategy": label, "Reported balance": usd(row["reported_usd"]),
             "Modeled exit cash": usd(row["cash_after_exit_usd"]),
@@ -103,7 +107,7 @@ def recovery_chart(result, recovery):
     for key, label in NAMES.items():
         row = result["table"][key]
         for case in range(0, 101, 5):
-            equity = row["cash_after_exit_usd"] + case / 100 * row["collateral_covered_claim_usd"]
+            equity = historical_replay.recovery_equity(row, case)
             points.append({"Recovery": case, "Equity": equity, "Strategy": label})
     base = alt.Chart(pd.DataFrame(points)).mark_line(strokeWidth=3).encode(
         x=alt.X("Recovery:Q", title="Recovery on collateral-covered claims (%)"),
@@ -119,6 +123,9 @@ def recovery_chart(result, recovery):
 
 def replay_panel(published):
     st.header("Historical strategy replay")
+    st.markdown("**Greedy** ranks trailing APR. **Repayment screen** also rejects persistently "
+                "near-full markets without a recent repayment. **Liquidity screen** adds a "
+                "minimum amount of free USDC before entry.")
     st.caption(f"{published['start']} to {published['terminal_exit']}  |  "
                f"{published['markets_ever_rankable']} markets ranked in the published replay  |  Ethereum USDC")
     with st.form("replay"):
@@ -137,8 +144,11 @@ def replay_panel(published):
     recovery = st.slider("Recovery on collateral-covered claims (%)", 0, 100, 50)
     st.dataframe(replay_rows(result, recovery), hide_index=True, width="stretch")
     recovery_chart(result, recovery)
-    st.caption("Modeled cash uses observed free USDC. Recovery applies only to residual claims up to "
-               "indexed collateral coverage. The Aave benchmark assumes exit at par.")
+    st.caption("Morpho exits use observed free USDC. Recovery applies to residual claims up to indexed "
+               "collateral coverage. Aave assumes full exit at par and pays $50 each for entry and exit.")
+    fraction = historical_replay.aave_exit_fraction_to_match_best_morpho(result["table"], recovery)
+    st.caption(f"At this recovery rate Aave ties the best Morpho rule at {fraction:.1%} "
+               "of its modeled terminal value.")
     st.download_button("Download replay results", json.dumps(result, indent=2), "replay.json", "application/json")
 
 
@@ -225,14 +235,97 @@ def basis_panel():
                f"Starting LTV {ltv:.1%}, Morpho LLTV {lltv:.1%}.")
 
 
+def spread_panel():
+    st.header("Liquidity-adjusted spread")
+    st.markdown("Start in Aave. Rotate into eligible Morpho markets when one rebalance period of "
+                "estimated excess carry covers the modeled round-trip gas.")
+    scenario = st.radio("Aave withdrawal capacity", ["Full exit", "$1M per withdrawal"],
+                        horizontal=True)
+    key = "base" if scenario == "Full exit" else "aave_capacity_stress"
+    saved = read_data("spread_replay.json")
+    with st.form("spread_assumptions"):
+        c1, c2 = st.columns(2)
+        capital = c1.selectbox("Starting capital", (10_000_000, 1_000_000), format_func=usd)
+        liquidity_multiple = c2.selectbox("Minimum free USDC", (1, 2), format_func=lambda n: f"{n}× initial sleeve")
+        submit = st.form_submit_button("Replay with these assumptions")
+    if submit:
+        st.session_state.spread_active_parameters = (capital, liquidity_multiple)
+    capital, liquidity_multiple = st.session_state.get("spread_active_parameters", (10_000_000, 1))
+    if (capital, liquidity_multiple) == (10_000_000, 1):
+        result = saved[key]
+    else:
+        result = run_spread_demo(capital, liquidity_multiple, key)
+    st.caption(f"{result['start']} to {result['terminal_exit']} · {usd(result['starting_capital_usd'])} "
+               "starting capital · Retrospective evaluation")
+    names = {**NAMES, spread_replay.SPREAD: "Adjusted spread"}
+    st.dataframe([
+        {"Strategy": names[name], "Modeled exit cash": usd(row["cash_after_exit_usd"]),
+         "Equity at 25% Morpho recovery": usd(row["equity_by_recovery_pct_usd"]["25"]),
+         "Equity at 50% Morpho recovery": usd(row["equity_by_recovery_pct_usd"]["50"]),
+         "Equity at 100% Morpho recovery": usd(row["equity_by_recovery_pct_usd"]["100"]),
+         "Residual face claims": usd(row["residual_claim_usd"]),
+         "Gross turnover": usd(row["gross_rebalance_turnover_usd"]),
+         "Recovery-mark drawdown": f"{row['max_drawdown_at_50pct_recovery']:.1%}"}
+        for name, row in result["table"].items()
+    ], hide_index=True, width="stretch")
+    st.caption("Aave capacity is a scenario assumption. Unwithdrawn Aave claims remain marked at par; "
+               "the 50% recovery rate applies only to collateral-covered Morpho claims.")
+    with st.expander("Allocation and risk diagnostics"):
+        st.dataframe([
+            {"Strategy": names[name], "Annualized at 50% recovery": f"{row['annualized_at_50pct_recovery']:.1%}",
+             "Transfers before terminal exit": row["rebalance_transactions"],
+             "Mean Aave share": f"{row['mean_aave_fraction']:.1%}",
+             "Mean Morpho share": f"{row['mean_morpho_fraction']:.1%}",
+             "Days with near-full market exposure": row["days_with_distressed_exposure"],
+             "Days with claims awaiting exit": row["days_with_exit_requested_claim"]}
+            for name, row in result["table"].items()
+        ], hide_index=True, width="stretch")
+    paths = [{**point, "Strategy": names[name]} for name, points in result["paths"].items() for point in points]
+    curves = pd.DataFrame(paths).pivot(index="date", columns="Strategy", values="marked_equity_usd") / 1e6
+    curves.index = pd.to_datetime(curves.index)
+    st.line_chart(curves, y_label="Equity at 50% Morpho recovery ($M)")
+    allocation = pd.DataFrame(result["paths"][spread_replay.SPREAD]).set_index("date")
+    allocation.index = pd.to_datetime(allocation.index)
+    st.line_chart((allocation[["aave_fraction", "morpho_fraction", "exit_requested_fraction"]]
+                   .rename(columns={"aave_fraction": "Aave", "morpho_fraction": "Morpho",
+                                    "exit_requested_fraction": "Awaiting Morpho exit"})) * 100,
+                  y_label="Share of nominal claims (%)")
+    choices = result["worked_decisions"]
+    if choices:
+        action = st.selectbox("Inspect a replayed decision", list(choices),
+                              format_func=lambda key: key.replace("_", " ").title())
+        row = choices[action]
+        signal, observed = row["signal"], row["observed"]
+        st.markdown(f"**{row['symbol']} · {row['date']}**")
+        if observed:
+            st.write(f"Previous-day free USDC {usd(observed['free_liquidity_usd'])}. "
+                     f"Repayment screen {'passed' if observed['repay_screen_pass'] else 'failed'}.")
+        if signal:
+            st.write(f"Diluted annual yield advantage {signal['annual_yield_advantage']:.2%}. "
+                     f"Expected excess carry after entry hurdle {usd(signal['net_spread_usd'])}.")
+        else:
+            st.write("The market no longer passed the entry risk gates.")
+        st.write(f"Net fill {usd(row['trade_usdc'])}. Claim still held after the rebalance "
+                 f"{usd(row['after_usdc'])}. Later withdrawals {usd(row['later_withdrawals_usdc'])}.")
+
+
+@st.cache_data(max_entries=8, show_spinner="Running spread replay...")
+def run_spread_demo(capital, liquidity_multiple, key):
+    cap = 1_000_000 if key == "aave_capacity_stress" else None
+    return spread_replay.run(read_data("demo_replay.json.gz"), aum=capital,
+                             min_free=liquidity_multiple * capital / config.BACKTEST_TOP_K,
+                             aave_capacity=cap)
+
+
 def main():
     st.set_page_config(page_title="DeFi Credit Lab", layout="wide")
     published = read_data("historical_replay.json")
     st.title("DeFi Credit Lab")
     st.markdown("**Morpho USDC research** · Lending spreads, liquidation economics and exit liquidity.")
-    tabs = st.tabs(["Overview", "Strategy replay", "Trade inspector", "Collateral stress", "ETH basis"],
+    tabs = st.tabs(["Overview", "Strategy replay", "Spread signal", "Trade inspector", "Collateral stress", "ETH basis"],
                    on_change="rerun")
-    panels = [overview, lambda: replay_panel(published), lambda: trade_panel(published), stress_panel, basis_panel]
+    panels = [overview, lambda: replay_panel(published), spread_panel,
+              lambda: trade_panel(published), stress_panel, basis_panel]
     for tab, panel in zip(tabs, panels):
         if tab.open:
             with tab:

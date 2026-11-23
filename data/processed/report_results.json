@@ -4,51 +4,76 @@
       "label": "USDC/wstUSR",
       "collateral": "wstUSR",
       "supply_usd": 770400609.997087,
-      "days_stuck": 246,
+      "days_stuck": 244,
       "days_stuck_is_lower_bound": false,
       "last_repay_date": "2026-03-23",
       "days_since_repay": 243.10097222222223,
-      "apr": 7.999999999933248
+      "apr": 7.999999999933248,
+      "borrow_usd": 770400609.997087,
+      "available_withdrawal_usd": 0.0,
+      "utilization": 1.0,
+      "observed_streak_start": "2026-03-23",
+      "borrow_usd_at_streak_start": 6226849.466449
     },
     "0xe1b65304edd8ceaea9b629df4c3c926a37d1216e27900505c04f14b2ed279f33": {
       "label": "USDC/RLP",
       "collateral": "RLP",
       "supply_usd": 255730382.703052,
-      "days_stuck": 246,
+      "days_stuck": 244,
       "days_stuck_is_lower_bound": false,
       "last_repay_date": "2026-07-24",
       "days_since_repay": 120.44152777777778,
-      "apr": 7.999999999933248
+      "apr": 7.999999999933248,
+      "borrow_usd": 255730382.703052,
+      "available_withdrawal_usd": 0.0,
+      "utilization": 1.0,
+      "observed_streak_start": "2026-03-23",
+      "borrow_usd_at_streak_start": 2635571.78375
     },
     "0xfd0d72a4f0469598b566b1bc5fe64835f828f90b1fb7d746148c086164cd4cc2": {
       "label": "USDC/AZND",
       "collateral": "AZND",
       "supply_usd": 109852855.53008,
-      "days_stuck": 154,
+      "days_stuck": 152,
       "days_stuck_is_lower_bound": false,
       "last_repay_date": "2026-06-23",
       "days_since_repay": 151.73041666666666,
-      "apr": 7.999999999933248
+      "apr": 7.999999999933248,
+      "borrow_usd": 109852855.53008,
+      "available_withdrawal_usd": 0.0,
+      "utilization": 1.0,
+      "observed_streak_start": "2026-06-23",
+      "borrow_usd_at_streak_start": 8232733.135271
     },
     "0x1cfdc0154ae6b9f1887a8250f2582d55606e1a2008e65108fb83dd50a928593e": {
       "label": "USDC/PT-RLP-9APR2026",
       "collateral": "PT-RLP-9APR2026",
       "supply_usd": 49845365.855952,
-      "days_stuck": 246,
+      "days_stuck": 244,
       "days_stuck_is_lower_bound": false,
       "last_repay_date": "2026-03-24",
       "days_since_repay": 241.8973611111111,
-      "apr": 7.99943487240772
+      "apr": 7.99943487240772,
+      "borrow_usd": 49845205.270701,
+      "available_withdrawal_usd": 160.585251,
+      "utilization": 0.9999967783313806,
+      "observed_streak_start": "2026-03-23",
+      "borrow_usd_at_streak_start": 482534.696914
     },
     "0x8e7cc042d739a365c43d0a52d5f24160fa7ae9b7e7c9a479bd02a56041d4cf77": {
       "label": "USDC/USR",
       "collateral": "USR",
       "supply_usd": 36585335.021495,
-      "days_stuck": 246,
+      "days_stuck": 244,
       "days_stuck_is_lower_bound": false,
       "last_repay_date": "2026-06-15",
       "days_since_repay": 159.09152777777777,
-      "apr": 7.999999999933248
+      "apr": 7.999999999933248,
+      "borrow_usd": 36585335.021495,
+      "available_withdrawal_usd": 0.0,
+      "utilization": 1.0,
+      "observed_streak_start": "2026-03-23",
+      "borrow_usd_at_streak_start": 276121.283128
     }
   },
   "zombie_supply_usd_total": 1222414549.1076663,
@@ -998,27 +1023,30 @@
     }
   ],
   "stream_case": {
-    "oracle_class": "UNKNOWN",
-    "concentration": {
+    "evidence": "retrospective_only",
+    "reference_block": 395834395,
+    "historical_concentration": null,
+    "historical_oracle_class": null,
+    "retrospective_concentration": {
       "n_borrowers": 2,
-      "top1_share": 0.9999985812805376,
+      "top1_share": 0.9999985812805364,
       "top5_share": 1.0,
-      "hhi": 0.9999971625651007
+      "hhi": 0.9999971625650983
     },
-    "realized_bad_debt": {
+    "retrospective_debt": {
       "n_liquidations": 1,
       "sum_bad_debt_from_liquidation_events": 187573800,
-      "current_borrow_assets_usd": 294205543.38619226,
+      "current_borrow_assets_usd": 295017181.51595825,
       "current_mark_to_market_bad_debt_usd": 288143926.24560803,
       "realized_bad_debt_usd": 0
-    },
-    "block_2025_11_02": 395834395
+    }
   },
   "figures": [
     "reports\\figures\\fig1_distance_to_liquidation_cdf.png",
     "reports\\figures\\fig2_loss_vs_shock_hero.png",
     "reports\\figures\\fig3_spread_waterfall.png",
     "reports\\figures\\fig5_capacity_and_allocation.png",
-    "reports\\figures\\fig6_stream_case.png"
-  ]
+    "reports\\figures\\fig10_zombie_markets.png"
+  ],
+  "zombie_free_usdc_total": 160.585251
 }

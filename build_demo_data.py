@@ -1,4 +1,3 @@
-"""Package the pinned, credential-free input files for the Streamlit demo."""
 import gzip
 import json
 import os

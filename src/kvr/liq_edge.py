@@ -20,7 +20,7 @@ import re
 import statistics
 
 import config
-from . import dex, oracle
+from . import oracle
 from . import chain as chain_mod
 from . import morpho_math as mm
 
@@ -91,30 +91,13 @@ def parse_pt_maturity(symbol):
         return None
 
 
-def event_economics(event, oracle_address, symbol, collateral_class, slip_fit, cost_of_capital_annual):
-    """Per-event profitability, insolvency, and left-on-the-table -- one oracle read (at the
-    liquidation's own execution block, not the block before -- see the note below) plus one tx
-    receipt, no hourly search.
+def event_economics(event, oracle_address, symbol, collateral_class, cost_of_capital_annual):
+    """Oracle-marked event and modeled exits; execution prices and realized P&L are unknown.
 
-    Review fix 1 decomposition: oracle_implied_bonus_usd (the LIF spread, valued at the market's
-    own oracle price -- used as the market-price proxy for BTC/ETH per the review's own offered
-    alternative to a separate Chainlink round, so oracle_market_basis_usd is 0 by construction,
-    not independently verified against a second feed) and gas_usd (block-level, see gas_cost_usd).
-
-    Review fix 2: the exit model (and therefore which cost is subtracted from the bonus) depends
-    on collateral_class/symbol -- see config.py's own LIQ_EDGE_HEDGE_COST_BPS /
-    LIQ_EDGE_REDEMPTION_COOLDOWN_DAYS / LIQ_EDGE_REDEMPTION_HAIRCUT_BPS docstrings for what each
-    model assumes. profit_dex_usd (the actual, Task-3-verified on-chain/aggregator DEX route) is
-    kept alongside the exit-model profit for BTC/ETH-family collateral only, as a second,
-    independently observed execution channel -- "MM" is gone entirely for everything else, per
-    the review ("remove MM P&L for collateral with no liquid perp hedge").
-    Returns None if the execution-time oracle price can't be read at all.
+    The oracle read is pinned to the event block, which may include updates in the
+    same block. Gas is the whole transaction cost. The hedge model assumes zero
+    oracle-to-exit basis and a flat fee; it does not price the collateral unwind.
     """
-    # The block the liquidation actually executed in, not the block before: found by hand that
-    # the oracle price can (and often does) move within that single block -- a price-feed
-    # update landing in the same block as the liquidation that it triggers is the common case,
-    # not an edge case (confirmed on a real WBTC event: $56,758 at blockNumber-1 vs $56,015 at
-    # blockNumber itself, the difference between "healthy" and "liquidatable" for that position).
     liq_block = event["blockNumber"]
     try:
         price = oracle.read_price(oracle_address, liq_block, max_retries=3)
@@ -130,21 +113,12 @@ def event_economics(event, oracle_address, symbol, collateral_class, slip_fit, c
     gas_usd = gas_cost_usd(event["txHash"], liq_block)
 
     oracle_implied_bonus_usd = seized_value_usd - repaid_usd
-    oracle_market_basis_usd = 0.0  # oracle used as the market-price proxy -- see docstring
-
-    profit_dex = None
-    if slip_fit is not None:
-        a, b, _cap = slip_fit
-        slip = min(dex.predict_slippage(a, b, seized), 1.0)
-        dex_proceeds = seized_value_usd * (1 - slip)
-        profit_dex = (dex_proceeds - repaid_usd - gas_usd) if gas_usd is not None else None
-
     exit_model, exit_cost_usd, exit_note = _exit_cost(
         symbol, collateral_class, seized_value_usd, event["timestamp"], cost_of_capital_annual
     )
     profit_usd = None
     if gas_usd is not None and exit_cost_usd is not None:
-        profit_usd = oracle_implied_bonus_usd - oracle_market_basis_usd - exit_cost_usd - gas_usd
+        profit_usd = oracle_implied_bonus_usd - exit_cost_usd - gas_usd
 
     return {
         "seized_value_usd": seized_value_usd,
@@ -154,12 +128,11 @@ def event_economics(event, oracle_address, symbol, collateral_class, slip_fit, c
         "is_dust": repaid_usd < config.LIQ_EDGE_DUST_THRESHOLD_USD,
         "gas_usd": gas_usd,
         "oracle_implied_bonus_usd": oracle_implied_bonus_usd,
-        "oracle_market_basis_usd": oracle_market_basis_usd,
         "exit_model": exit_model,
         "exit_cost_usd": exit_cost_usd,
         "exit_note": exit_note,
         "profit_usd": profit_usd,
-        "profit_dex_usd": profit_dex,
+        "execution_pnl_usd": None,
     }
 
 
@@ -308,7 +281,9 @@ def validate_delay_window(market_id, user, oracle_address, lltv_raw, execution_b
     if window_blocks <= 0:
         return {"samples": [], "any_healthy": False, "measured_apr": None, "verified": True, "note": "zero-width window"}
 
-    blocks = [execution_block - window_blocks + round(i * window_blocks / (n_samples - 1)) for i in range(n_samples)]
+    # End-of-block state on the execution block already includes the liquidation.
+    width = window_blocks - 1
+    blocks = [execution_block - window_blocks + round(i * width / (n_samples - 1)) for i in range(n_samples)]
     samples = []
     for b in blocks:
         try:
@@ -337,7 +312,7 @@ def validate_delay_window(market_id, user, oracle_address, lltv_raw, execution_b
         "samples": samples,
         "any_healthy": any_healthy,
         "measured_apr": measured_apr,
-        "verified": not any_healthy,
+        "verified": not any_healthy and all(sample["hf"] is not None for sample in samples),
     }
 
 
@@ -391,11 +366,12 @@ def summarize_market(events, economics_list, delay_samples):
     valid = [e for e in economics_list if e is not None]
     valid_delays = sorted(d for d in delay_samples if d is not None)
     stats = profitability_stats(valid)
+    bad_debts = [int(event["data"]["badDebtAssets"]) for event in events]
     return {
         "n_events": len(events),
-        "n_insolvent": sum(1 for e in valid if e["is_insolvent"]),
+        "n_insolvent": sum(bad_debt > 0 for bad_debt in bad_debts),
         **stats,
-        "total_left_on_table_usd": sum(e["bad_debt_usd"] for e in valid),
+        "total_left_on_table_usd": sum(bad_debts) / 1e6,
         "median_delay_hours": statistics.median(valid_delays) if valid_delays else None,
         "n_delay_sampled": len(delay_samples),
         "n_delay_found": len(valid_delays),

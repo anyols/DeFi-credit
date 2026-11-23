@@ -175,8 +175,8 @@ def plot_liq_edge_profitability(summaries, name="fig7_liq_edge_profitability.png
         ax.bar(x + width / 2, [(summaries[l]["profitable_share_volume"] or 0) * 100 for l in labels], width, label="By USD volume")
         ax.set_xticks(x)
         ax.set_xticklabels(labels, rotation=20, ha="right")
-    ax.set_ylabel("Profitable share of real liquidations (%)")
-    ax.set_title("Liquidator profitability over the real sample, by count vs by volume")
+    ax.set_ylabel("Share with positive modeled P&L (%)")
+    ax.set_title("Historical events under modeled exit costs")
     ax.legend()
     ax.grid(alpha=0.3)
     return _save(fig, name)
@@ -194,8 +194,8 @@ def plot_liq_edge_delay(delay_samples_by_market, sample_cap, name="fig8_liq_edge
     fig, ax = plt.subplots(figsize=(8, 5))
     if data:
         ax.boxplot(data, tick_labels=labels)
-    ax.set_ylabel("Hours between oracle breach and actual liquidation")
-    ax.set_title(f"Delay to liquidation (sampled, up to {sample_cap}/market)")
+    ax.set_ylabel("Estimated hours to liquidation")
+    ax.set_title(f"Oracle-based timing estimates (up to {sample_cap} events per market)")
     ax.tick_params(axis="x", rotation=20)
     ax.grid(alpha=0.3)
     return _save(fig, name)
@@ -204,38 +204,34 @@ def plot_liq_edge_delay(delay_samples_by_market, sample_cap, name="fig8_liq_edge
 def plot_liq_edge_left_on_table(summaries, name="fig9_liq_edge_left_on_table.png"):
     """Task 4. summaries: {label: {"total_left_on_table_usd":..}} -- ground-truth badDebtAssets
     summed over the real sample, not a modeled estimate."""
-    labels = list(summaries.keys())
-    left = [summaries[l]["total_left_on_table_usd"] for l in labels]
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.bar(labels, left)
-    ax.set_ylabel("Left on the table -- unrecovered bad debt (USD)")
-    ax.set_title("Bad debt realized per collateral, last 24 months")
-    ax.tick_params(axis="x", rotation=20)
-    ax.grid(alpha=0.3)
+    rows = sorted((s["total_left_on_table_usd"] / 1e6, name.removeprefix("USDC/"))
+                  for name, s in summaries.items())
+    fig, ax = plt.subplots(figsize=(8, 5), layout="constrained")
+    values, labels = zip(*rows) if rows else ((), ())
+    ax.barh(labels, values, color="steelblue")
+    ax.set_xlabel("Recorded bad debt (USDC millions)")
+    ax.set_title("Bad debt recorded by collateral, 24-month sample")
+    ax.grid(axis="x", alpha=0.3)
     return _save(fig, name)
 
 
-def plot_zombie_markets(zombies, zombie_supply_usd_total, healthy_supply_usd_total, name="fig10_zombie_markets.png"):
-    """Memo (Task 5). zombies: {label: {"supply_usd":.., "apr":.., "days_stuck":..}} (report_results.json's
-    own zombies dict) -- utilization>=99% for 30d+, no Repay in 30d+ (spread.classify_zombie)."""
+def plot_zombie_markets(zombies, name="fig10_zombie_markets.png"):
+    """Compare present claims with historical debt and immediate liquidity."""
     labels = [z["collateral"] for z in zombies.values()]
-    supply_m = [z["supply_usd"] / 1e6 for z in zombies.values()]
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(11, 5))
-
-    ax1.bar(labels, supply_m, color="crimson")
-    ax1.set_ylabel("Reported supply ($M)")
-    ax1.set_title("Zombie market supply (stuck, >=99% utilization, no repay 30d+)")
-    ax1.tick_params(axis="x", rotation=20)
-    ax1.grid(alpha=0.3)
-
-    ax2.pie(
-        [zombie_supply_usd_total, healthy_supply_usd_total],
-        labels=[f"Zombie (${zombie_supply_usd_total/1e9:.2f}B)", f"Healthy (${healthy_supply_usd_total/1e9:.2f}B)"],
-        colors=["crimson", "steelblue"],
-        autopct="%1.0f%%",
-    )
-    ax2.set_title("Share of top-15 USDC markets' supply")
-    fig.suptitle("Zombie markets: reported supply that isn't actively managed")
+    fig, ax = plt.subplots(figsize=(9, 4.5))
+    x = np.arange(len(labels))
+    ax.bar(x - .18, [z["supply_usd"] / 1e6 for z in zombies.values()], .36,
+           color="crimson", label="Snapshot supply claims")
+    ax.bar(x + .18, [z["borrow_usd_at_streak_start"] / 1e6
+                     if z["borrow_usd_at_streak_start"] is not None else np.nan for z in zombies.values()],
+           .36, color="steelblue", label="Debt at start of observed streak")
+    ax.set_xticks(x, labels, rotation=20, ha="right")
+    ax.set_yscale("log")
+    ax.set_ylabel("USDC millions (log scale)")
+    free = sum(z["available_withdrawal_usd"] for z in zombies.values())
+    ax.set_title(f"{len(labels)} illiquid markets held {free:,.0f} USDC of free liquidity at the snapshot")
+    ax.legend()
+    ax.grid(axis="y", alpha=.3)
     return _save(fig, name)
 
 

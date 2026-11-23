@@ -37,9 +37,9 @@ def test_toy_2market_backtest_hand_computed_pnl():
 
     # Day 1: one day of income with own-deposit dilution, hand-verified via
     # income_with_dilution's own independently-derivable formula (see its docstring):
-    # rate_ps = (rate_at_target/1e18) * u * (1-fee); income = (x/new_supply) * borrow_usd * rate_ps * 86400.
-    expected_income_a = (1_000_000 / 10_000_000) * 9_000_000 * (31709792 / 10**18 * 0.9) * 86400
-    expected_income_b = (500_000 / 5_000_000) * 4_500_000 * (15854896 / 10**18 * 0.9) * 86400
+    # The supply rate already includes utilization. Apply it directly to the lender balance.
+    expected_income_a = 1_000_000 * (31709792 / 10**18 * 0.9) * 86400
+    expected_income_b = 500_000 * (15854896 / 10**18 * 0.9) * 86400
     expected_day1 = 1_500_000 + expected_income_a + expected_income_b
     assert result["equity_reported"][1] == pytest.approx((86400, expected_day1))
     assert result["equity_marked"][1] == pytest.approx((86400, expected_day1))  # neither market is a zombie here
