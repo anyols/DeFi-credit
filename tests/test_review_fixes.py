@@ -1,6 +1,3 @@
-"""Tests added in response to the Task 2 code review: Poisson CI, the gap-aware exceedance
-frequency fix, loss-given-shock curves (no probability), and irm.apr vs irm.apy.
-"""
 
 import numpy as np
 import pytest

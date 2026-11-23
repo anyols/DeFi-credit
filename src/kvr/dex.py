@@ -1,15 +1,4 @@
-"""M6: DEX depth via Uniswap V3 QuoterV2 (eth_call simulation, no real swap) + slippage fit.
 
-QuoterV2 address (0x61fFE014bA17989E743c5F6cB21bF9697530B21e) verified to have deployed code at
-config.SNAPSHOT_BLOCK via eth_getCode, and the quoteExactInputSingle/quoteExactInput struct
-layouts verified against Uniswap/v3-periphery's IQuoterV2.sol.
-
-Task 3: a direct token_in/USDC pair is often thin or absent even for liquid collateral (wstETH,
-cbBTC) -- real Uniswap liquidity for these concentrates in the WETH/WBTC pair instead, so
-best_route also tries routing through those intermediates. Zero depth found only on the direct
-pair is a routing gap, not a finding (per the user's own review: "wstETH having zero depth is a
-bug, not a result").
-"""
 
 import time
 

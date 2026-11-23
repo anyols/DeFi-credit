@@ -1,7 +1,4 @@
-"""T1 (SPEC.md section 5): sum of reconstructed per-position borrow assets vs the market's own
-accrued totalBorrowAssets, rel err < 1e-6. Needs a live archive RPC (config.RPC_URL /
-config.SNAPSHOT_BLOCK) and Arnau's hand-written kvr/morpho_math.py -- skips cleanly without either.
-"""
+
 
 import importlib
 

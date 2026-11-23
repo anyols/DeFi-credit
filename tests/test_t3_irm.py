@@ -1,5 +1,3 @@
-"""T3 (SPEC.md section 5): irm.py borrow rate vs on-chain borrowRateView at snapshot,
-rel err < 1e-9. Needs a live archive RPC (config.RPC_URL / config.SNAPSHOT_BLOCK)."""
 
 import pytest
 

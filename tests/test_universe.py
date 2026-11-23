@@ -1,4 +1,3 @@
-"""Off-chain half of M1's id check -- hits the live Morpho API (no RPC key needed)."""
 
 from kvr.universe import verify_market_id
 

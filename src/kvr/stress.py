@@ -1,11 +1,3 @@
-"""M8: the liquidation loop -- the core insight of the whole project (SPEC.md).
-
-For each scenario, walks the shock path step by step: at each step's oracle price, finds every
-liquidatable position, sizes the aggregate seize notional for that step (slippage depends on the
-TOTAL being dumped, not any one position), and only executes a liquidation if it's still
-profitable after that slippage. Positions nobody finds profitable to liquidate are "stranded" --
-the breakpoint shock where stranding starts is the headline number.
-"""
 
 from . import dex
 from . import morpho_math as mm

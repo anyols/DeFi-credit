@@ -1,16 +1,4 @@
-"""T6 (SPEC.md section 5): fit predicts a held-out quote size, within 15%.
 
-Confirmed FAILING against real data -- this is a genuine finding, not a bug. Tried both
-extrapolation (fit on the 3 smallest sizes, predict the next one up: 41% error) and the more
-charitable interpolation (fit on sizes both smaller and larger than the holdout: 28% error).
-Both exceed 15%. The underlying cause: dex.py's own fit_slippage already found the WBTC/USDC
-Uniswap V3 pool's effective exponent b ranges from ~0.79 to ~1.43 across different segments of
-the curve (see the commit that introduced depth-cap detection) -- a real concentrated-liquidity
-pool doesn't hold to one clean power law the way a textbook passive AMM would, so a single (a, b)
-fit from a handful of points doesn't reliably predict a size it wasn't fit on. Marked xfail
-(not deleted, not loosened) so this stays a visible, honest result rather than a silently
-lowered bar -- see README.md's "What would break this model" for the same point.
-"""
 
 import pytest
 

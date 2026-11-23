@@ -1,10 +1,3 @@
-"""stress.run_scenario: regression test for a real bug found while implementing Task 4's review
-fix 5 (pulling in the stress engine's "modeled" walk-away shock) -- the old n_stranded counted
-every position that never executed, including the vast majority that were simply healthy and
-never at risk at all, making n_stranded > 0 (and find_breakpoint_shock's stranding check) true
-at almost any shock for any market with more than a handful of positions. Confirmed on real
-WBTC data: n_stranded was 637 (the market's ENTIRE position count) even at 0% shock.
-"""
 
 import pytest
 

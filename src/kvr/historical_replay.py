@@ -1,4 +1,3 @@
-"""Point-in-time Morpho USDC replay with cash exit and residual claim scenarios."""
 from bisect import bisect_left
 from datetime import datetime, timezone
 

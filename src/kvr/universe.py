@@ -1,16 +1,3 @@
-"""M1: the USDC market universe -> MarketParams, with on-chain id verification.
-
-Scope change: no vault. The universe is the top config.TOP_N_MARKETS Ethereum Morpho Blue
-markets by supply, with loanToken=USDC, totalSupplyAssets >= config.MIN_SUPPLY_USD, and nonzero
-borrows (see config.py for the exact thresholds and why). Candidate selection uses the Morpho
-API's current state; id verification and every number actually used downstream is a fresh
-on-chain read pinned to config.SNAPSHOT_BLOCK.
-
-keccak256(abi.encode(MarketParams)) == marketId is Morpho Blue's own definition of a market id
-(see MarketParamsLib.id in morpho-org/morpho-blue); verify_market_id checks that the API's
-reported params for a market actually hash to the id the API gave us, and build_markets also
-cross-checks idToMarketParams(id) on-chain. Both must hold for the market to be trustworthy input.
-"""
 
 import pandas as pd
 from eth_abi import encode as abi_encode

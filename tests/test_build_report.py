@@ -1,7 +1,3 @@
-"""build_report.usd_to_collateral_raw: hand-computed check that inverting Morpho's oracle price
-convention (collateral_raw * price // 1e36 == loan_raw, loan token always USDC/1e6) gives the
-right raw collateral size for a target USD notional, without needing the collateral's decimals.
-"""
 
 import build_report
 

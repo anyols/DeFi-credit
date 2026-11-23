@@ -1,14 +1,4 @@
-"""AdaptiveCurveIRM, replicated integer-exact. Verified against source (MIT), not the spec's
-rounded prose constants:
-- morpho-org/morpho-blue-irm src/adaptive-curve-irm/AdaptiveCurveIrm.sol (curve, drift, averaging)
-- .../libraries/ConstantsLib.sol (every constant below)
-- .../libraries/ExpLib.sol (wExp: a bounded 2nd-order Taylor approximation with a power-of-2
-  bit-shift decomposition -- deliberately not a true exponential, so T3 needs this exact
-  approximation, not math.exp, to hit its 1e-9 tolerance)
 
-Originally slated as a hand-written file (see SPEC.md 1.1); written by Claude Code instead at
-the user's explicit request, after flagging the SPEC.md section 8 whiteboard-derivation tradeoff.
-"""
 
 import math
 

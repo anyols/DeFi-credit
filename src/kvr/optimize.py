@@ -1,11 +1,4 @@
-"""M11: risk-priced allocation.
 
-income_i(x) = x/(S_i+x) * Bor_i * r_borrow(Bor_i/(S_i+x)) * (1-fee_i)
-maximize sum_i [income_i(x_i) - EL_i * x_i], subject to caps and sum(x_i) <= B.
-
-Primary solver is greedy water-filling (easy to explain at a whiteboard); slsqp_check cross-
-checks it from several starting points, per SPEC.md M11.
-"""
 
 import numpy as np
 from scipy.optimize import minimize

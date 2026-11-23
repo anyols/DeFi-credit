@@ -1,19 +1,4 @@
-"""Task 4 (new module): "When do DeFi liquidators walk away, and who gets paid when they do?"
 
-Per-market, per-liquidation-event reconstruction over config.LIQ_EDGE_LOOKBACK_DAYS: gas cost
-(real tx receipts, priced via a block-level Chainlink ETH/USD read -- review fix 1), per-
-collateral-class exit economics (review fix 2: perp hedge for BTC/ETH, issuer redemption for
-redeemable yield-bearing collateral, hold-to-maturity for PT notes), insolvency (badDebtAssets
-> 0), and "left on the table" (unrecovered bad debt -- ground truth from the event itself).
-
-The expensive piece -- how long a position sat liquidatable before it was actually liquidated,
-found by searching the ORACLE's own historical price against the position's breakeven price --
-is capped per market (config.LIQ_EDGE_DELAY_SAMPLE_PER_MARKET events, searched via exponential-
-backoff + binary refine so each one costs O(log(max_hours)) oracle reads, not a linear hourly
-scan). Found by hand: the real 24-month universe has 886 Liquidate events; reconstructing all of
-them this way would be well over an hour of RPC round trips for a number this project already
-gets, bounded and labeled, from a sample -- the same sampling precedent as T4's "replay the last 50".
-"""
 
 import datetime as dt
 import re

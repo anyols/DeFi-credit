@@ -1,8 +1,3 @@
-"""dex.fit_slippage: regression test for a real crash found while widening the universe past
-WBTC/cbBTC (8 decimals, always well within int64) to 18-decimal, ~$1-priced collateral, where
-raw quote sizes exceed int64 -- np.array() on such a list of plain Python ints silently makes an
-object-dtype array, and np.log then raises "int object has no attribute log" instead of fitting.
-"""
 
 import pytest
 

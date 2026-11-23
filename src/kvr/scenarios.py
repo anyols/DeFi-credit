@@ -1,4 +1,4 @@
-"""M7: shock grid + historical frequencies.
+""" shock grid + historical frequencies.
 
 Oracle-shock mapping (SPEC.md M7):
     MARKET:        m_o = m (the oracle sees the real move)

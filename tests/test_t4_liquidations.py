@@ -1,29 +1,4 @@
-"""T4 (SPEC.md section 5): replay the market's real Liquidate events and check
-seized ~= repaid * LIF * 1e36 / price, tolerance "rounding only". Uses the Morpho API for the
-liquidation history (txHash/repaid/seized) and a live eth_call for the oracle price, so it needs
-a connected archive RPC.
 
-SPEC.md's own text says price(block-1); empirically that is wrong for this market and was
-caught by the global "an extreme/failing number is a bug until proven otherwise" rule, not
-assumed away: 30 of 50 real liquidations failed at 1e-6 with price(block-1), all with
-seized_actual > seized_expected. Checked the oracle price at block-1 vs the liquidation's own
-block for the first failure (0x3d87329f..., block 26460969): it dropped 1.31% within that one
-block, which is also exactly that event's relative error. Morpho's liquidate() calls
-IOracle.price() synchronously in the same transaction, so the correct read is the liquidation's
-own block, not block-1 -- confirmed by re-running all 50 events with that change: 0 mismatches.
-
-Second real bug, found on a later re-run and initially misdiagnosed: USDC/WBTC is actively
-liquidated, so an unfiltered "last 50 liquidations" shifts between runs -- which looked like the
-explanation for a transient ZeroDivisionError (one event's oracle price() returning exactly 0).
-Pinning the window to SNAPSHOT_BLOCK's timestamp (api.get_market_liquidations's before_timestamp)
-is still correct and still done below, for reproducibility -- but it did NOT fix the flakiness,
-which turned out to be a third, more fundamental bug: querying the exact same historical block
-for the exact same oracle 8 times in a row, back to back, returned 0 on 3 attempts and the real
-nonzero price on the other 5. That's RPC infrastructure non-determinism on the free-tier archive
-endpoint, not a shifting window, not an on-chain fact -- fixed in oracle.read_price (retries on a
-price of exactly 0, which is never legitimately correct for a live oracle), used here instead of
-a bare chain.call so this test benefits from that retry.
-"""
 
 import pytest
 

@@ -1,9 +1,3 @@
-"""T2 (SPEC.md section 5): HF for 20 random positions vs Morpho API, rel err < 1e-4.
-
-Live comparison (current block, not config.SNAPSHOT_BLOCK): the API's `healthFactor` field is
-computed against its own current indexed state, so matching it needs our on-chain read taken at
-the same moment, not a pinned historical block.
-"""
 
 import random
 

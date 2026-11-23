@@ -1,4 +1,3 @@
-"""Deterministic checks for spread.py's cross-section helpers (M10) -- no network needed."""
 
 import numpy as np
 

@@ -1,9 +1,4 @@
-"""Task 7 (new module): "Deploy USDC as a lender, or run the ETH basis trade?" Compares, per
-day over the same window as backtest.py (config.BASIS_LOOKBACK_DAYS): LEND (Aave/RISK_AWARE
-USDC supply rate, from backtest.py), BASIS (unlevered: long wstETH spot + short ETH perp, carry
-= staking yield + funding - fees), and LEVERED BASIS (financed by borrowing USDC against wstETH
-on Morpho at a target LTV). A comparison, not a strategy recommendation.
-"""
+
 
 import requests
 

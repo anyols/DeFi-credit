@@ -1,7 +1,4 @@
-"""Task 6: validation tests for backtest.py -- a toy 2-market backtest with hand-computed P&L,
-a liquidity-trapped withdrawal case, and REL_VALUE's switch-threshold logic. Chain-free and
-deterministic, like T7's toy cases: no real history/API calls, hand-built dicts only.
-"""
+
 
 import pytest
 

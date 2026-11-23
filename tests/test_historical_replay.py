@@ -1,4 +1,3 @@
-"""Regression checks for information timing and recoverable equity."""
 import gzip
 import json
 import math

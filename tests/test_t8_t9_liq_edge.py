@@ -1,7 +1,4 @@
-"""T8/T9 (Task 4, SPEC.md section 5's own numbering continued): validation tests for
-liq_edge.py's reconstruction math, kept chain-free and deterministic like T7's toy cases --
-the search algorithm and the breakeven formula are tested on their own, not against a live RPC.
-"""
+
 
 import datetime as dt
 

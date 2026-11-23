@@ -1,12 +1,3 @@
-"""M12: Stream Finance / xUSD backtest (Nov 2025). Scope note (SPEC.md section 7's own cut
-list, applied given time constraints): reduced to oracle class + concentration metrics only,
-compared against realized bad debt -- the first two of the three things SPEC.md's own fallback
-explicitly keeps.
-
-Runs against Arbitrum (the xUSD market with real size lives there, not Ethereum), via
-Arbitrum's public RPC -- a separate, ad hoc path from chain.py's Ethereum-only config.RPC_URL,
-reusing chain.py's pure ABI encode/decode helpers since those are chain-agnostic.
-"""
 
 import os
 

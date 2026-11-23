@@ -1,6 +1,4 @@
-"""Figures for the memo (SPEC.md section 6). Each function saves a PNG to reports/figures/
-and returns the path. No adjectives, no styling beyond what makes the numbers legible.
-"""
+
 
 from pathlib import Path
 

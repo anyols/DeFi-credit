@@ -1,16 +1,4 @@
-"""Morpho Blue's own math, replicated integer-exact. Every formula here is quoted/verified
-against morpho-org/morpho-blue source (MIT), not reconstructed from the spec's prose:
-- share<->asset conversions: src/libraries/SharesMathLib.sol
-- health check, maxBorrow: src/Morpho.sol::_isHealthy
-- LIF, liquidation seize/repay conversions, bad debt: src/Morpho.sol::liquidate +
-  src/libraries/ConstantsLib.sol
 
-Originally slated as a hand-written file (see SPEC.md 1.1); written by Claude Code instead at
-the user's explicit request to reallocate that ownership for this run, after flagging the
-tradeoff (SPEC.md section 8's whiteboard questions assume hand-derivation). Every formula below
-is still tested against real on-chain data and hand-computed toy cases (tests/test_toy.py,
-tests/test_t1_positions.py), not just transcribed.
-"""
 
 WAD = 10**18
 ORACLE_PRICE_SCALE = 10**36

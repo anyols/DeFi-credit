@@ -1,12 +1,4 @@
-"""M5: oracle read + classification -- the key feature of the whole risk engine, per SPEC.md.
 
-Verified against morpho-org/morpho-blue-oracles MorphoChainlinkOracleV2.sol: feeds are
-BASE_FEED_1/2, QUOTE_FEED_1/2 (Chainlink AggregatorV3Interface, zero address if unused), vault
-conversions are BASE_VAULT/QUOTE_VAULT (ERC4626, zero address if unused). Not every oracle on
-Morpho is this exact contract, so every field read below is best-effort: a revert means "this
-oracle doesn't expose that field", not a fatal error, and an oracle where none of the known
-fields can be read at all is classified UNKNOWN for manual review.
-"""
 
 from . import chain
 

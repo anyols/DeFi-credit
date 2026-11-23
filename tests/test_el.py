@@ -1,9 +1,3 @@
-"""Task 2: a hand-computed synthetic market where a -30% shock gives a known loss and lambda is
-known, so EL must match the hand calculation exactly -- the regression test for the EL==0 bug
-(a 1-day shock horizon's lambda was zero everywhere loss_frac was nonzero, and nonzero only
-where loss_frac was exactly zero; see scenarios.py's exceedance_frequency docstring and
-config.PRICE_HISTORY_CHUNKS for the fix).
-"""
 
 from kvr import el
 

@@ -1,6 +1,4 @@
-"""M9: expected loss. EL_i (bps/yr) = sum over shock buckets of lambda(bucket) * loss_frac_i(bucket),
-using the base kappa plus a stressed-depth variant -- reported as a range, never a point estimate.
-"""
+
 
 
 def marginal_frequencies(shocks_sorted_by_severity, lambda_fn):

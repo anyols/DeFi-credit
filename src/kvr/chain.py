@@ -1,8 +1,4 @@
-"""RPC access to Morpho Blue: single calls, Multicall3 batching, chunked getLogs, parquet caching.
 
-ABI fragments below are hand-verified against morpho-org/morpho-blue src/interfaces/IMorpho.sol
-(IMorphoStaticTyping forms) rather than taken from memory, per SPEC.md ground rules.
-"""
 
 import time
 from pathlib import Path

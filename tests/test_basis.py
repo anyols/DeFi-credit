@@ -1,7 +1,4 @@
-"""Task 7: validation tests for basis.py -- a hand-computed daily carry, plus the depeg-to-
-liquidation and perp-margin-buffer risk formulas. Chain-free and deterministic, like T7's own
-toy cases: no real API/chain calls, hand-built inputs only.
-"""
+
 
 import pytest
 

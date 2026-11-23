@@ -1,4 +1,3 @@
-"""Pure ABI-encoding checks for chain.py -- no network, no RPC key needed."""
 
 from eth_abi import decode as abi_decode
 from eth_abi import encode as abi_encode

@@ -1,23 +1,4 @@
-"""M2: borrower discovery + position state at SNAPSHOT_BLOCK, with interest accrued to the
-snapshot timestamp.
 
-Borrower discovery uses the Morpho API's indexed `marketPositions` instead of scanning
-`Borrow`/`SupplyCollateral` logs: a free-tier Ethereum RPC key (e.g. Alchemy) caps eth_getLogs at
-10 blocks per call, so scanning a market's full history (often >1M blocks) via getLogs is not
-practical without a paid plan. The API gives the same set of addresses already indexed; every
-number used for the actual math (shares, collateral, market totals) still comes from a raw
-eth_call via chain.py at the exact pinned SNAPSHOT_BLOCK, not from the API.
-
-Accrual replicates Morpho.sol::_accrueInterest and MathLib.sol::wTaylorCompounded exactly
-(verified against source, both MIT/GPL-2.0, morpho-org/morpho-blue):
-    elapsed  = snapshot_timestamp - lastUpdate
-    rate     = borrowRateView(marketParams, market)        # per-second, WAD
-    interest = totalBorrowAssets * wTaylorCompounded(rate, elapsed) / WAD
-    totalBorrowAssets += interest; totalSupplyAssets += interest
-This accrual step is plumbing (Morpho's generic 3-term-Taylor compounding, used identically by
-every market regardless of IRM), not the AdaptiveCurveIRM curve/drift model -- that is Arnau's
-irm.py (M4), used for forward-looking rate projections, not for accruing past interest here.
-"""
 
 import pandas as pd
 

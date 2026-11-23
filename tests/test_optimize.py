@@ -1,12 +1,3 @@
-"""M11 (SPEC.md section 4): SLSQP cross-check on greedy_water_fill, using real USDC/cbBTC and
-USDC/WBTC market state. USDC/sNUSD is deliberately excluded here -- see optimize.slsqp_check's
-docstring: its rateAtTarget is pinned at AdaptiveCurveIrm's own ceiling from ~100% utilization
-for 90 straight days, which makes income_rate(x) spike near x->0 (a real breakdown of SPEC.md
-M11's own "hold Bor_i fixed" assumption, not a solver bug) and the two methods can land on very
-different allocations of the same near-optimal objective value. This test checks the solvers
-agree where the formula is well-behaved; the sNUSD spike is exercised directly instead, as its
-own documented data point.
-"""
 
 import pytest
 

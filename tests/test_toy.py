@@ -1,17 +1,4 @@
-"""T7 (SPEC.md section 5): hand-computed single-position markets, exact.
 
-Each "expected" value below is computed independently in the test itself (plain integer
-arithmetic spelled out, not by calling morpho_math's own helpers), so this isn't circular. WAD
-constants are written as exact integer literals throughout (e.g. `115 * 10**16`, not
-`int(1.15 * WAD)`) -- 1.15 isn't exactly representable in binary float, so the float form
-silently rounds to 1149999999999999872, one off from the real 1.15e18. That's exactly the kind
-of bug integer-exact math is supposed to catch.
-
-Covers: healthy, liquidatable (profitable close), liquidatable into bad debt, and the
-virtual-shares rounding mechanics on their own. The other two SPEC.md T7 cases --
-liquidatable-unprofitable (needs stress.py's slippage/gas check) and fixed-oracle (needs
-oracle.py's classification) -- move to test_stress.py / test_oracle.py once those exist.
-"""
 
 from kvr import morpho_math as mm
 

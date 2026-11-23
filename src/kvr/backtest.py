@@ -1,11 +1,3 @@
-"""Shared rate math and the exploratory Ethereum Morpho USDC comparison.
-
-The exploratory universe uses current supply and its static exit filters use the
-snapshot or live quotes. Use historical_replay for the lagged strategy comparison.
-
-Rates are read from the on-chain IRM (historical rateAtTarget + utilization -> irm.borrow_rate),
-never the API's own APY fields, matching this project's rule everywhere else.
-"""
 
 import datetime as dt
 

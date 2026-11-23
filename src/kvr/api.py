@@ -1,6 +1,4 @@
-"""Morpho API client (GraphQL). The REST v0 API in SPEC.md is gone (404 as of this writing);
-GraphQL at api.morpho.org/graphql is the only live endpoint, confirmed by schema introspection.
-"""
+
 
 import time
 

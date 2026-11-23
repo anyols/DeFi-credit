@@ -1,4 +1,3 @@
-"""M10: spread decomposition, per market and across the wider USDC-market cross-section."""
 
 import datetime as dt
 import time
